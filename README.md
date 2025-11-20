@@ -1,1 +1,379 @@
-# ForensicsProject
+###### 数字取证镜像分析工具
+
+[TOC]
+
+# 数字取证镜像分析工具
+
+基于 The Sleuth Kit (TSK) 4.14.0 构建的综合性数字取证工具，用于分析磁盘镜像并将取证数据提取到结构化的 SQLite 数据库中。
+
+## 功能特性
+
+- **多格式支持**: 分析 E01 (EnCase) 和 DD (原始) 磁盘镜像
+- **跨平台分析**: 支持 Windows (NTFS, FAT)、Linux (EXT2/3/4) 和 USB 设备文件系统
+- **三层数据库架构**:
+  1. **原始数据库**: 通过 TSK API 提取的完整文件系统元数据
+  2. **事件数据库**: 文件系统事件时间线（创建、修改、访问、删除）
+  3. **文件数据库**: 按类型分类的文件（13 个类别）
+
+## 系统要求
+
+### 依赖项
+
+- **C++ 编译器**: GCC 9+ 或 Clang 10+，支持 C++20 标准
+- **CMake**: 3.20 或更高版本
+- **The Sleuth Kit**: 4.14.0 版本
+- **SQLite3**: 3.30 或更高版本
+- **libewf**: 用于 E01 镜像支持
+
+### Ubuntu/Debian 安装
+
+```bash
+# 安装编译工具
+sudo apt-get update
+sudo apt-get install -y build-essential cmake git
+
+# 安装 SQLite3
+sudo apt-get install -y libsqlite3-dev sqlite3
+
+# 安装 libewf 以支持 E01 格式
+sudo apt-get install -y libewf-dev
+
+# 安装 The Sleuth Kit 4.14.0
+wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-4.14.0/sleuthkit-4.14.0.tar.gz
+tar -xzf sleuthkit-4.14.0.tar.gz
+cd sleuthkit-4.14.0
+./configure
+make
+sudo make install
+sudo ldconfig
+```
+
+# 详细描述
+
+## Windows 安装
+
+1. 安装 Visual Studio 2019 或更高版本（包含 C++ 支持）
+2. 安装 vcpkg 包管理器
+3. 通过 vcpkg 安装依赖项：
+
+```powershell
+vcpkg install sqlite3:x64-windows
+vcpkg install sleuthkit:x64-windows
+```
+
+## 编译项目
+
+```powershell
+# 克隆或创建项目目录
+mkdir forensic_analyzer
+cd forensic_analyzer
+
+# 创建构建目录
+mkdir build
+cd build
+
+# 使用 CMake 配置
+cmake ..
+
+# 编译
+cmake --build . -j$(nproc)
+
+# 安装（可选）
+sudo cmake --install .
+```
+## 使用方法
+
+### 基本用法
+
+```bash
+./forensic_analyzer <镜像路径>
+```
+### 输出结果
+
+工具会生成三个 SQLite 数据库：
+
+1. <镜像名>_raw.db: 原始取证数据
+2. <镜像名>_events.db: 文件系统时间线事件
+3. <镜像名>_files.db: 按类型分类的文件
+
+## 数据库架构
+
+### 原始数据库 (_raw.db)
+
+#### files 表
+
+存储文件系统的完整元数据
+
+```sql
+CREATE TABLE files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inode INTEGER,              -- 索引节点号
+    name TEXT,                  -- 文件名
+    path TEXT,                  -- 完整路径
+    size INTEGER,               -- 文件大小（字节）
+    atime INTEGER,              -- 访问时间（Unix 时间戳）
+    mtime INTEGER,              -- 修改时间
+    ctime INTEGER,              -- 状态改变时间
+    crtime INTEGER,             -- 创建时间（出生时间）
+    type TEXT,                  -- 文件类型：REG（普通文件）、DIR（目录）、LNK（链接）
+    md5 TEXT,                   -- MD5 哈希值
+    is_deleted INTEGER,         -- 是否已删除（0=否，1=是）
+    is_allocated INTEGER,       -- 是否已分配（0=否，1=是）
+    permissions TEXT,           -- 权限（八进制）
+    uid INTEGER,                -- 用户 ID
+    gid INTEGER                 -- 组 ID
+);
+```
+
+索引:
+
+- idx_files_inode: 索引节点号索引
+- idx_files_path: 路径索引
+- idx_files_type: 文件类型索引
+- idx_files_deleted: 删除状态索引
+
+#### partitions 表
+
+存储分区信息。
+
+```sql
+CREATE TABLE partitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partition_num INTEGER,      -- 分区编号
+    start_offset INTEGER,       -- 起始偏移量
+    length INTEGER,             -- 分区长度
+    description TEXT,           -- 描述
+    fs_type TEXT               -- 文件系统类型
+);
+```
+
+#### 事件数据库 (_events.db)
+
+1. events表,主事件表，包含所有文件系统事件。
+
+```sql
+CREATE TABLE events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,     -- 事件时间戳
+    event_type TEXT NOT NULL,       -- 事件类型
+    file_path TEXT NOT NULL,        -- 文件路径
+    inode INTEGER,                  -- 索引节点号
+    description TEXT,               -- 事件描述
+    file_size INTEGER,              -- 文件大小
+    file_type TEXT                  -- 文件类型
+);
+```
+事件类型:
+- CREATED: 文件创建
+- MODIFIED: 文件内容修改
+- ACCESSED: 文件访问/读取
+- CHANGED: 元数据更改（权限、所有权等）
+- DELETED: 文件删除
+
+
+
+2. 专用事件表:
+
+- creation_events: 文件创建事件
+- modification_events: 文件修改事件
+- access_events: 文件访问事件
+- change_events: 元数据更改事件
+- deletion_events: 文件删除事件
+
+每个表的结构：
+```sql
+CREATE TABLE <event_type>_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    inode INTEGER,
+    file_size INTEGER,
+    file_type TEXT
+);
+```
+
+
+
+3. 视图:
+	1, timeline 视图: 按时间顺序显示所有事件:
+```sql
+CREATE VIEW timeline AS
+SELECT 
+    datetime(timestamp, 'unixepoch') as event_time,
+    event_type,
+    file_path,
+    inode,
+    file_size,
+    file_type,
+    description
+FROM events
+ORDER BY timestamp DESC;
+```
+
+	2, event_statistics 视图: 事件统计摘要
+```sql
+CREATE VIEW event_statistics AS
+SELECT 
+    event_type,
+    COUNT(*) as event_count,
+    MIN(timestamp) as first_event,
+    MAX(timestamp) as last_event,
+    datetime(MIN(timestamp), 'unixepoch') as first_event_time,
+    datetime(MAX(timestamp), 'unixepoch') as last_event_time
+FROM events
+GROUP BY event_type;
+```
+
+	3, hourly_activity 视图: 按小时统计的活动
+```sql
+CREATE VIEW hourly_activity AS
+SELECT 
+    strftime('%Y-%m-%d %H:00:00', datetime(timestamp, 'unixepoch')) as hour,
+    event_type,
+    COUNT(*) as event_count
+FROM events
+GROUP BY hour, event_type
+ORDER BY hour DESC;
+```
+
+### 文件数据库 (_files.db)
+
+#### 文件分类表（13种类型）
+
+1. images (图片文件)
+   - 扩展名: jpg, jpeg, png, gif, bmp, tiff, svg, webp, raw, cr2, nef, psd, ai, heic 等
+   - 用途: 照片、图形、设计文件
+
+2. videos (视频文件)
+
+   - 扩展名: mp4, avi, mkv, mov, wmv, flv, webm, mpg, mpeg, 3gp 等
+
+   - 用途: 视频录像、电影、监控录像
+
+
+3. audio_files (音频文件)
+
+- 扩展名: mp3, wav, flac, aac, ogg, wma, m4a, opus 等
+- 用途: 音乐、录音、播客
+
+4. documents (文档文件)
+    - 扩展名: pdf, doc, docx, xls, xlsx, ppt, pptx, txt, csv, rtf, odt 等
+    - 用途: 办公文档、报告、表格、演示文稿
+
+5. archives (压缩文件)
+    - 扩展名: zip, rar, 7z, tar, gz, bz2, iso, apk, jar 等
+    - 用途: 压缩包、安装包、备份文件
+
+6. executables (可执行文件)
+    - 扩展名: exe, dll, so, dylib, app, bin, sh, bat, cmd, ps1 等
+    - 用途: 程序、脚本、系统库
+
+7. databases (数据库文件)
+    - 扩展名: db, sqlite, sqlite3, mdb, accdb, sql, dbf 等
+    - 用途: 数据库文件、备份
+
+8. source_code (源代码文件)
+    - 扩展名: c, cpp, java, py, js, php, go, rs, swift, html, css 等
+    - 用途: 程序源代码、脚本
+
+9. web_files (网页文件)
+    - 扩展名: html, htm, css, xml, json, yaml, jsp, asp 等
+    - 用途: 网页、配置文件
+
+10. email_files (邮件文件)
+    - 扩展名: eml, msg, pst, ost, mbox, emlx 等
+    - 用途: 电子邮件、邮箱数据
+
+11. system_files (系统文件)
+    - 扩展名: ini, cfg, conf, reg, dat, tmp, log, cache 等
+    - 用途: 系统配置、日志、临时文件
+
+12. encrypted_files (加密文件)
+     - 扩展名: gpg, pgp, aes, encrypted, p12, pfx, pem, key 等
+     - 用途: 加密文件、证书、密钥
+
+13. unknown_files (未知文件)
+     - 无法识别扩展名或未分类的文件
+
+
+
+表结构(每个分类表都有相同的结构):
+```sql
+CREATE TABLE <category> (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inode INTEGER,              -- 索引节点号
+    name TEXT,                  -- 文件名
+    path TEXT,                  -- 完整路径
+    size INTEGER,               -- 文件大小
+    extension TEXT,             -- 文件扩展名
+    mtime INTEGER,              -- 修改时间
+    ctime INTEGER,              -- 状态改变时间
+    is_deleted INTEGER,         -- 是否已删除
+    md5 TEXT                    -- MD5 哈希值
+);
+```
+
+
+
+索引:
+
+- idx_<category>_path: 路径索引
+- idx_<category>_extension: 扩展名索引
+- idx_<category>_size: 大小索引
+
+
+
+视图
+
+1. file_summary视图: 文件分类统计摘要
+
+```sql
+CREATE VIEW file_summary AS
+SELECT 
+    'Images' as category,
+    COUNT(*) as file_count,
+    SUM(size) as total_size,
+    ROUND(AVG(size), 2) as avg_size,
+    MAX(size) as max_size
+FROM images
+UNION ALL
+SELECT 'Videos', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM videos
+-- ... 其他类别
+```
+
+2. extension_statistics 视图: 扩展名统计
+
+```sql
+CREATE VIEW extension_statistics AS
+SELECT 
+    extension, 
+    COUNT(*) as count, 
+    SUM(size) as total_size
+FROM (
+    SELECT extension, size FROM images
+    UNION ALL
+    SELECT extension, size FROM videos
+    -- ... 其他类别
+)
+GROUP BY extension
+ORDER BY count DESC;
+```
+
+3. deleted_files 视图: 所有已删除的文件
+
+```sql
+CREATE VIEW deleted_files AS
+SELECT 
+    'Images' as category, 
+    name, 
+    path, 
+    size, 
+    extension 
+FROM images 
+WHERE is_deleted = 1
+UNION ALL
+SELECT 'Videos', name, path, size, extension FROM videos WHERE is_deleted = 1
+-- ... 其他类别
+```
+
+# 结束
