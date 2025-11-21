@@ -121,13 +121,14 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(SolutionDir)\sleuthkit\</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\sleuthkit\;$(SolutionDir)\sqlite3\</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)\sleuthkit\win32\x64\Release_NoLibs\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libtsk.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)\sleuthkit\win32\x64\Release_NoLibs\;$(SolutionDir)\sqlite3\</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libtsk.lib;sqlite3.lib;ole32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
