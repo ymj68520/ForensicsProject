@@ -30,7 +30,17 @@ bool ImageAnalyzer::openImage() {
 	TSK_IMG_TYPE_ENUM imgType = TSK_IMG_TYPE_DETECT;
 
 	// Open the image
-	TSK_TCHAR* imgPathCstr = (TSK_TCHAR*)(imagePath_.c_str());
+	//TSK_TCHAR* imgPathCstr = (TSK_TCHAR*)(imagePath_.c_str());
+	int len = MultiByteToWideChar(CP_UTF8, 0, imagePath_.c_str(), -1, nullptr, 0);
+	if (len <= 0) {
+		std::cerr << "Path len cant be 0 or less than 0" << GetLastError() << std::endl;
+	}
+	TSK_TCHAR* imgPathCstr = new TSK_TCHAR[len];
+	if (MultiByteToWideChar(CP_UTF8, 0, imagePath_.c_str(), -1, imgPathCstr, len) == 0) {
+		std::cerr << "Error converting image path to TSK_TCHAR: " << GetLastError() << std::endl;
+		return false;
+	}
+	wprintf(L"%1s\n", imgPathCstr);
 	imgInfo_ = tsk_img_open(1, &imgPathCstr, imgType, 0);
 	//imgInfo_ = tsk_img_open(1, &imagePath_[0], imgType, 0);
 	if (!imgInfo_) {
