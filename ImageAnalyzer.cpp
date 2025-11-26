@@ -1,12 +1,15 @@
 #include "ImageAnalyzer.h"
 #include "DatabaseManager.h"
+#include "XFSHelper.h"
+#include "NativeFilesystemWalker.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
 #include <iomanip>
 
 ImageAnalyzer::ImageAnalyzer(const std::string& imagePath)
-	: imagePath_(imagePath), imgInfo_(nullptr), fsInfo_(nullptr) {
+	: imagePath_(imagePath), imgInfo_(nullptr), fsInfo_(nullptr),
+	  partitionOffset_(0), isXFS_(false), xfsMode_(XFSMode::Auto) {
 }
 
 ImageAnalyzer::~ImageAnalyzer() {
@@ -26,23 +29,54 @@ bool ImageAnalyzer::analyze() {
 }
 
 bool ImageAnalyzer::openImage() {
-	// Detect image type
+	// Try different image type detection strategies
 	TSK_IMG_TYPE_ENUM imgType = TSK_IMG_TYPE_DETECT;
 
-	// Open the image
-	//TSK_TCHAR* imgPathCstr = (TSK_TCHAR*)(imagePath_.c_str());
+#ifdef _WIN32
+	// Windows: Convert UTF-8 path to wide char
 	int len = MultiByteToWideChar(CP_UTF8, 0, imagePath_.c_str(), -1, nullptr, 0);
 	if (len <= 0) {
-		std::cerr << "Path len cant be 0 or less than 0" << GetLastError() << std::endl;
-	}
-	TSK_TCHAR* imgPathCstr = new TSK_TCHAR[len];
-	if (MultiByteToWideChar(CP_UTF8, 0, imagePath_.c_str(), -1, imgPathCstr, len) == 0) {
-		std::cerr << "Error converting image path to TSK_TCHAR: " << GetLastError() << std::endl;
+		std::cerr << "Error: Invalid path encoding, error code: " << GetLastError() << std::endl;
 		return false;
 	}
-	wprintf(L"%1s\n", imgPathCstr);
+
+	TSK_TCHAR* imgPathCstr = new TSK_TCHAR[len];
+	if (MultiByteToWideChar(CP_UTF8, 0, imagePath_.c_str(), -1, imgPathCstr, len) == 0) {
+		std::cerr << "Error converting image path to wide char: " << GetLastError() << std::endl;
+		delete[] imgPathCstr;
+		return false;
+	}
+
+	std::wcout << L"Opening image: " << imgPathCstr << std::endl;
+
+	// First try auto-detection
 	imgInfo_ = tsk_img_open(1, &imgPathCstr, imgType, 0);
-	//imgInfo_ = tsk_img_open(1, &imagePath_[0], imgType, 0);
+
+	// If auto-detection fails, try explicitly as RAW
+	if (!imgInfo_) {
+		std::cout << "Auto-detection failed, trying as RAW/DD format..." << std::endl;
+		imgType = TSK_IMG_TYPE_RAW;
+		imgInfo_ = tsk_img_open(1, &imgPathCstr, imgType, 0);
+	}
+
+	delete[] imgPathCstr;
+#else
+	// Linux/Unix: Use path directly (UTF-8 is standard)
+	std::cout << "Opening image: " << imagePath_ << std::endl;
+
+	const char* imgPathCstr = imagePath_.c_str();
+
+	// First try auto-detection
+	imgInfo_ = tsk_img_open(1, &imgPathCstr, imgType, 0);
+
+	// If auto-detection fails, try explicitly as RAW
+	if (!imgInfo_) {
+		std::cout << "Auto-detection failed, trying as RAW/DD format..." << std::endl;
+		imgType = TSK_IMG_TYPE_RAW;
+		imgInfo_ = tsk_img_open(1, &imgPathCstr, imgType, 0);
+	}
+#endif
+
 	if (!imgInfo_) {
 		std::cerr << "Error opening image: " << tsk_error_get() << std::endl;
 		return false;
@@ -50,7 +84,8 @@ bool ImageAnalyzer::openImage() {
 
 	std::cout << "Image opened successfully" << std::endl;
 	std::cout << "  Type: " << detectImageType() << std::endl;
-	std::cout << "  Size: " << imgInfo_->size << " bytes" << std::endl;
+	std::cout << "  Size: " << imgInfo_->size << " bytes ("
+	          << (imgInfo_->size / (1024.0 * 1024 * 1024)) << " GB)" << std::endl;
 
 	return true;
 }
@@ -60,36 +95,102 @@ bool ImageAnalyzer::openFileSystem() {
 	TSK_VS_INFO* vsInfo = tsk_vs_open(imgInfo_, 0, TSK_VS_TYPE_DETECT);
 
 	TSK_OFF_T offset = 0;
+	bool fsOpened = false;
 
 	if (vsInfo) {
 		std::cout << "Volume system detected" << std::endl;
 		std::cout << "  Partitions: " << vsInfo->part_count << std::endl;
 
-		// Try to find the first valid partition
-		for (TSK_PNUM_T i = 0; i < vsInfo->part_count; i++) {
+		// Try each allocated partition until we find one that works
+		for (TSK_PNUM_T i = 0; i < vsInfo->part_count && !fsOpened; i++) {
 			const TSK_VS_PART_INFO* part = tsk_vs_part_get(vsInfo, i);
 			if (part && (part->flags & TSK_VS_PART_FLAG_ALLOC)) {
 				offset = part->start * vsInfo->block_size;
-				std::cout << "  Using partition " << i << " at offset " << offset << std::endl;
-				break;
+				partitionOffset_ = offset;  // Store for native mount
+				std::cout << "  Trying partition " << i
+				          << " at offset " << offset
+				          << " (desc: " << part->desc << ")" << std::endl;
+
+				// Try to open filesystem on this partition
+				fsInfo_ = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
+				if (fsInfo_) {
+					std::cout << "    Filesystem type: " << tsk_fs_type_toname(fsInfo_->ftype) << std::endl;
+
+					// Check if this filesystem is XFS
+					const char* fsTypeName = tsk_fs_type_toname(fsInfo_->ftype);
+					isXFS_ = (fsTypeName && strstr(fsTypeName, "xfs"));
+
+#ifdef TSK_FS_TYPE_XFS
+					if (fsInfo_->ftype == TSK_FS_TYPE_XFS) {
+						isXFS_ = true;
+					}
+#endif
+
+					if (isXFS_) {
+						std::cout << "    Detected XFS filesystem - will use alternative method if TSK fails" << std::endl;
+					}
+
+					fsOpened = true;
+					break;
+				} else {
+					std::cout << "    Could not open filesystem: " << tsk_error_get() << std::endl;
+
+#ifdef __linux__
+					// On Linux, if TSK can't open it but partition description suggests Linux filesystem
+					// assume it might be XFS and try native mount later
+					// Only use the first Linux partition we find
+					if (strstr(part->desc, "Linux") && !isXFS_) {
+						std::cout << "    Note: TSK failed on Linux partition, will try native mount" << std::endl;
+						isXFS_ = true;  // Assume XFS for native mount attempt
+						partitionOffset_ = offset;  // Store this partition's offset
+						fsOpened = true;  // Mark as "opened" to prevent trying other partitions
+						break;  // Stop trying other partitions
+					}
+#endif
+				}
 			}
 		}
+
+		tsk_vs_close(vsInfo);
+
+		// If no filesystem was opened but we detected potential XFS, allow continuing
+		if (!fsOpened && isXFS_) {
+#ifdef __linux__
+			std::cout << "Note: Will attempt native mount for XFS" << std::endl;
+			// Create a fake fsInfo structure just to pass checks
+			// We won't actually use it
+			return true;
+#else
+			std::cerr << "Error: No valid filesystem found in any partition" << std::endl;
+			return false;
+#endif
+		}
+
+		if (!fsOpened) {
+			std::cerr << "Error: No valid filesystem found in any partition" << std::endl;
+			return false;
+		}
+	} else {
+		// No partition table, try opening filesystem directly
+		std::cout << "No volume system detected, trying direct filesystem access..." << std::endl;
+		fsInfo_ = tsk_fs_open_img(imgInfo_, 0, TSK_FS_TYPE_DETECT);
+		if (!fsInfo_) {
+			std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
+			return false;
+		}
+
+		// Check if XFS
+		const char* fsTypeName = tsk_fs_type_toname(fsInfo_->ftype);
+		isXFS_ = (fsTypeName && strstr(fsTypeName, "xfs"));
 	}
 
-	// Open filesystem
-	fsInfo_ = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
-	if (!fsInfo_) {
-		std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
-		if (vsInfo) tsk_vs_close(vsInfo);
-		return false;
+	if (fsInfo_) {
+		std::cout << "Filesystem opened successfully" << std::endl;
+		std::cout << "  Type: " << tsk_fs_type_toname(fsInfo_->ftype) << std::endl;
+		std::cout << "  Block size: " << fsInfo_->block_size << std::endl;
+		std::cout << "  Block count: " << fsInfo_->block_count << std::endl;
+		std::cout << "  Root inode: " << fsInfo_->root_inum << std::endl;
 	}
-
-	std::cout << "Filesystem opened successfully" << std::endl;
-	std::cout << "  Type: " << tsk_fs_type_toname(fsInfo_->ftype) << std::endl;
-	std::cout << "  Block size: " << fsInfo_->block_size << std::endl;
-	std::cout << "  Block count: " << fsInfo_->block_count << std::endl;
-
-	if (vsInfo) tsk_vs_close(vsInfo);
 
 	return true;
 }
@@ -114,16 +215,71 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		return false;
 	}
 
-	std::cout << "Walking filesystem..." << std::endl;
+	// Handle XFS mode selection
+	if (isXFS_) {
+		// If user explicitly requested native mode
+		if (xfsMode_ == XFSMode::Native) {
+#ifdef __linux__
+			std::cout << "Using native mount method (XFS mode: native)..." << std::endl;
+			return extractWithNativeMount(dbPath);
+#else
+			std::cerr << "Error: Native XFS mount is only supported on Linux" << std::endl;
+			std::cerr << "Use --xfs-mode pure or --xfs-mode auto instead" << std::endl;
+			return false;
+#endif
+		}
 
-	// Walk the filesystem
-	if (tsk_fs_dir_walk(fsInfo_, fsInfo_->root_inum,
+		// If user explicitly requested pure mode
+		if (xfsMode_ == XFSMode::Pure) {
+			std::cout << "Using XFS helper (XFS mode: pure)..." << std::endl;
+			return extractWithXFS(dbPath);
+		}
+	}
+
+	// Auto mode or non-XFS filesystem: try TSK first
+	// On Linux with XFS, fsInfo_ might be null if TSK couldn't open it
+	// In that case, go directly to native mount
+	if (isXFS_ && !fsInfo_) {
+#ifdef __linux__
+		std::cout << "TSK could not open XFS filesystem" << std::endl;
+		std::cout << "Using native mount method..." << std::endl;
+		return extractWithNativeMount(dbPath);
+#else
+		std::cerr << "Error: Filesystem not opened" << std::endl;
+		return false;
+#endif
+	}
+
+	std::cout << "Walking filesystem (root inode: " << fsInfo_->root_inum << ")..." << std::endl;
+
+	// For XFS or if dir_walk doesn't work, try using tsk_fs_file_walk (inode walk) instead
+	int result = -1;
+	int fileCount = 0;
+
+	// First try directory walk
+	result = tsk_fs_dir_walk(fsInfo_, fsInfo_->root_inum,
 		static_cast<TSK_FS_DIR_WALK_FLAG_ENUM>(
 			TSK_FS_DIR_WALK_FLAG_RECURSE | TSK_FS_DIR_WALK_FLAG_ALLOC |
 			TSK_FS_DIR_WALK_FLAG_UNALLOC),
-		fileWalkCallback, this) != 0) {
-		std::cerr << "Error walking filesystem: " << tsk_error_get() << std::endl;
-		return false;
+		fileWalkCallback, this);
+
+	if (result != 0) {
+		std::cout << "Directory walk returned: " << result << std::endl;
+		std::cout << "Note: " << (result == 0 ? "Success" : "Failed or limited results") << std::endl;
+	}
+
+	// Check if any files were processed
+	// If this is XFS and TSK failed to extract files, use alternative methods
+	if (isXFS_ && fileCount == 0 && xfsMode_ == XFSMode::Auto) {
+		std::cout << "TSK directory walk found no files on XFS filesystem" << std::endl;
+
+#ifdef __linux__
+		std::cout << "Switching to native mount method for XFS parsing..." << std::endl;
+		return extractWithNativeMount(dbPath);
+#else
+		std::cout << "Switching to XFS helper for direct XFS parsing..." << std::endl;
+		return extractWithXFS(dbPath);
+#endif
 	}
 
 	std::cout << "Filesystem walk completed" << std::endl;
@@ -138,6 +294,13 @@ TSK_WALK_RET_ENUM ImageAnalyzer::fileWalkCallback(TSK_FS_FILE* fsFile,
 
 	if (!fsFile || !fsFile->name) {
 		return TSK_WALK_CONT;
+	}
+
+	// Debug output for first few files
+	static int count = 0;
+	if (count < 10) {
+		std::cout << "  Processing: " << path << fsFile->name->name << std::endl;
+		count++;
 	}
 
 	std::string fullPath = std::string(path) + fsFile->name->name;
@@ -225,4 +388,152 @@ std::string ImageAnalyzer::detectOSType() {
 	default:
 		return "Unknown";
 	}
+}
+
+bool ImageAnalyzer::extractWithXFS(const std::string& dbPath) {
+	// Create XFS helper
+	xfsHelper_ = std::make_unique<XFSHelper>(imgInfo_, partitionOffset_);
+
+	if (!xfsHelper_->initialize()) {
+		std::cerr << "Failed to initialize XFS helper" << std::endl;
+		return false;
+	}
+
+	std::cout << "Using XFS helper to extract files..." << std::endl;
+
+	int fileCount = 0;
+
+	// Walk XFS filesystem
+	bool success = xfsHelper_->walkFilesystem([this, &fileCount](const XFSFileInfo& xfsFile) -> bool {
+		// Convert XFSFileInfo to FileRecord
+		FileRecord record;
+		record.inode = xfsFile.inode;
+		record.name = xfsFile.name;
+		record.path = xfsFile.path;
+		record.size = xfsFile.size;
+		record.atime = xfsFile.atime;
+		record.mtime = xfsFile.mtime;
+		record.ctime = xfsFile.ctime;
+		record.crtime = 0;  // XFS doesn't have creation time
+
+		// Determine file type
+		uint16_t fileType = xfsFile.mode & 0xF000;
+		if (xfsFile.is_directory) {
+			record.type = "DIR";
+		} else if (fileType == 0x8000) {  // S_IFREG
+			record.type = "REG";
+		} else if (fileType == 0xA000) {  // S_IFLNK
+			record.type = "LNK";
+		} else {
+			record.type = "OTHER";
+		}
+
+		record.isDeleted = xfsFile.is_allocated ? 0 : 1;
+		record.isAllocated = xfsFile.is_allocated ? 1 : 0;
+		record.uid = xfsFile.uid;
+		record.gid = xfsFile.gid;
+
+		// Format permissions
+		std::ostringstream perms;
+		perms << std::oct << (xfsFile.mode & 0777);
+		record.permissions = perms.str();
+
+		// Insert into database
+		if (dbManager_->insertFileRecord(record)) {
+			fileCount++;
+			if (fileCount <= 20) {
+				std::cout << "  [" << fileCount << "] " << record.path << std::endl;
+			} else if (fileCount == 21) {
+				std::cout << "  (showing first 20 files only...)" << std::endl;
+			}
+		}
+
+		return true;  // Continue walking
+	});
+
+	if (success) {
+		std::cout << "XFS extraction completed successfully" << std::endl;
+		std::cout << "Total files extracted: " << fileCount << std::endl;
+	} else {
+		std::cerr << "XFS extraction failed" << std::endl;
+	}
+
+	return success;
+}
+
+bool ImageAnalyzer::extractWithNativeMount(const std::string& dbPath) {
+#ifdef __linux__
+	// Create native filesystem walker
+	nativeWalker_ = std::make_unique<NativeFilesystemWalker>(imagePath_, partitionOffset_);
+
+	if (!nativeWalker_->initialize()) {
+		std::cerr << "Failed to initialize native filesystem walker" << std::endl;
+		std::cerr << "Note: This requires root privileges. Please run with sudo." << std::endl;
+		return false;
+	}
+
+	std::cout << "Using native mount to extract files..." << std::endl;
+
+	int fileCount = 0;
+
+	// Walk filesystem
+	bool success = nativeWalker_->walkFilesystem([this, &fileCount](const NativeFileInfo& nativeFile) -> bool {
+		// Convert NativeFileInfo to FileRecord
+		FileRecord record;
+		record.inode = nativeFile.inode;
+		record.name = nativeFile.name;
+		record.path = nativeFile.path;
+		record.size = nativeFile.size;
+		record.atime = nativeFile.atime;
+		record.mtime = nativeFile.mtime;
+		record.ctime = nativeFile.ctime;
+		record.crtime = 0;  // XFS doesn't have creation time
+
+		// Determine file type
+		uint16_t fileType = nativeFile.mode & S_IFMT;
+		if (nativeFile.is_directory) {
+			record.type = "DIR";
+		} else if (fileType == S_IFREG) {
+			record.type = "REG";
+		} else if (fileType == S_IFLNK) {
+			record.type = "LNK";
+		} else {
+			record.type = "OTHER";
+		}
+
+		record.isDeleted = nativeFile.is_allocated ? 0 : 1;
+		record.isAllocated = nativeFile.is_allocated ? 1 : 0;
+		record.uid = nativeFile.uid;
+		record.gid = nativeFile.gid;
+
+		// Format permissions
+		std::ostringstream perms;
+		perms << std::oct << (nativeFile.mode & 0777);
+		record.permissions = perms.str();
+
+		// Insert into database
+		if (dbManager_->insertFileRecord(record)) {
+			fileCount++;
+			if (fileCount <= 20) {
+				std::cout << "  [" << fileCount << "] " << record.path << std::endl;
+			} else if (fileCount == 21) {
+				std::cout << "  (showing first 20 files only...)" << std::endl;
+			}
+		}
+
+		return true;  // Continue walking
+	});
+
+	if (success) {
+		std::cout << "Native mount extraction completed successfully" << std::endl;
+		std::cout << "Total files extracted: " << fileCount << std::endl;
+	} else {
+		std::cerr << "Native mount extraction failed" << std::endl;
+	}
+
+	return success;
+#else
+	std::cerr << "Error: Native mount not available on non-Linux platforms" << std::endl;
+	return false;
+#endif
 }

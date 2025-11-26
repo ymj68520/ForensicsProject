@@ -1,0 +1,83 @@
+#pragma once
+
+#include <string>
+#include <functional>
+#include <cstdint>
+
+// Forward declarations
+struct TSK_IMG_INFO;
+class DatabaseManager;
+
+// File information structure (matches XFSFileInfo for consistency)
+struct NativeFileInfo {
+    uint64_t inode;
+    std::string name;
+    std::string path;
+    uint64_t size;
+    int64_t atime;
+    int64_t mtime;
+    int64_t ctime;
+    uint16_t mode;
+    uint32_t uid;
+    uint32_t gid;
+    bool is_directory;
+    bool is_allocated;
+};
+
+#ifdef __linux__
+
+#include <sys/stat.h>
+#include <sys/mount.h>
+
+// Linux-specific native filesystem walker
+// Uses loop mount + standard POSIX filesystem traversal
+class NativeFilesystemWalker {
+public:
+    NativeFilesystemWalker(const std::string& imagePath, uint64_t partitionOffset);
+    ~NativeFilesystemWalker();
+
+    // Initialize and mount filesystem
+    bool initialize();
+
+    // Walk filesystem and call callback for each file
+    using FileCallback = std::function<bool(const NativeFileInfo&)>;
+    bool walkFilesystem(FileCallback callback);
+
+    // Get mount point
+    std::string getMountPoint() const { return mountPoint_; }
+
+private:
+    // Setup loop device
+    bool setupLoopDevice();
+
+    // Mount filesystem
+    bool mountFilesystem();
+
+    // Unmount and cleanup
+    void cleanup();
+
+    // Recursively walk directory
+    bool walkDirectory(const std::string& dirPath, const std::string& relativePath,
+                      FileCallback callback);
+
+    std::string imagePath_;
+    uint64_t partitionOffset_;
+    std::string loopDevice_;
+    std::string mountPoint_;
+    bool mounted_;
+    bool loopSetup_;
+};
+
+#else
+
+// Stub for non-Linux platforms
+class NativeFilesystemWalker {
+public:
+    NativeFilesystemWalker(const std::string&, uint64_t) {}
+    ~NativeFilesystemWalker() {}
+    bool initialize() { return false; }
+    bool walkFilesystem(std::function<bool(const NativeFileInfo&)>) { return false; }
+    std::string getMountPoint() const { return ""; }
+};
+
+#endif // __linux__

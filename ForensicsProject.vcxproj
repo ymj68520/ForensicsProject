@@ -135,14 +135,20 @@
     <ClCompile Include="DatabaseManager.cpp" />
     <ClCompile Include="EventExtractor.cpp" />
     <ClCompile Include="FileClassifier.cpp" />
+    <ClCompile Include="FileExtractor.cpp" />
     <ClCompile Include="ImageAnalyzer.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="XFSHelper.cpp" />
+    <ClCompile Include="NativeFilesystemWalker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DatabaseManager.h" />
     <ClInclude Include="EventExtractor.h" />
     <ClInclude Include="FileClassifier.h" />
+    <ClInclude Include="FileExtractor.h" />
     <ClInclude Include="ImageAnalyzer.h" />
+    <ClInclude Include="XFSHelper.h" />
+    <ClInclude Include="NativeFilesystemWalker.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
