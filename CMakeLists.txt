@@ -9,12 +9,23 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Find required packages
 find_package(SQLite3 REQUIRED)
 
-# TSK library paths (adjust based on your installation)
-set(TSK_INCLUDE_DIR "/usr/local/include" CACHE PATH "TSK include directory")
-set(TSK_LIBRARY_DIR "/usr/local/lib" CACHE PATH "TSK library directory")
+# TSK library paths
+if(WIN32)
+    # Windows: Use local TSK build
+    set(TSK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/sleuthkit" CACHE PATH "TSK include directory")
+    set(TSK_LIBRARY_DIR "${CMAKE_SOURCE_DIR}/sleuthkit/win32/x64/Release_NoLibs" CACHE PATH "TSK library directory")
+    set(TSK_LIBRARIES "libtsk.lib")
+    set(PLATFORM_LIBRARIES "ole32")
+else()
+    # Linux/Unix: Use system-installed TSK
+    set(TSK_INCLUDE_DIR "/usr/local/include" CACHE PATH "TSK include directory")
+    set(TSK_LIBRARY_DIR "/usr/local/lib" CACHE PATH "TSK library directory")
+    set(TSK_LIBRARIES "tsk")
+    set(PLATFORM_LIBRARIES "pthread" "dl")
+endif()
 
 include_directories(
-    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}
     ${TSK_INCLUDE_DIR}
     ${SQLite3_INCLUDE_DIRS}
 )
@@ -23,24 +34,35 @@ link_directories(${TSK_LIBRARY_DIR})
 
 # Source files
 set(SOURCES
-    src/main.cpp
-    src/ImageAnalyzer.cpp
-    src/DatabaseManager.cpp
-    src/EventExtractor.cpp
-    src/FileClassifier.cpp
+    main.cpp
+    ImageAnalyzer.cpp
+    DatabaseManager.cpp
+    EventExtractor.cpp
+    FileClassifier.cpp
+    FileExtractor.cpp
+    XFSHelper.cpp
+    NativeFilesystemWalker.cpp
 )
 
 # Create executable
 add_executable(forensic_analyzer ${SOURCES})
 
 # Link libraries
-target_link_libraries(forensic_analyzer
-    tsk
-    ewf
-    ${SQLite3_LIBRARIES}
-    pthread
-    dl
-)
+if(WIN32)
+    target_link_libraries(forensic_analyzer
+        ${TSK_LIBRARIES}
+        sqlite3.lib
+        ${PLATFORM_LIBRARIES}
+    )
+else()
+    target_link_libraries(forensic_analyzer
+        ${TSK_LIBRARIES}
+        ewf
+        ${SQLite3_LIBRARIES}
+        ${PLATFORM_LIBRARIES}
+    )
+endif()
 
 # Installation
 install(TARGETS forensic_analyzer DESTINATION bin)
+
