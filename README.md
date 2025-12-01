@@ -1,44 +1,44 @@
-###### Êı×ÖÈ¡Ö¤¾µÏñ·ÖÎö¹¤¾ß
+###### æ•°å­—å–è¯é•œåƒåˆ†æå·¥å…·
 
 [TOC]
 
-# Êı×ÖÈ¡Ö¤¾µÏñ·ÖÎö¹¤¾ß
+# æ•°å­—å–è¯é•œåƒåˆ†æå·¥å…·
 
-»ùÓÚ The Sleuth Kit (TSK) 4.14.0 ¹¹½¨µÄ×ÛºÏĞÔÊı×ÖÈ¡Ö¤¹¤¾ß£¬ÓÃÓÚ·ÖÎö´ÅÅÌ¾µÏñ²¢½«È¡Ö¤Êı¾İÌáÈ¡µ½½á¹¹»¯µÄ SQLite Êı¾İ¿âÖĞ¡£
+åŸºäº The Sleuth Kit (TSK) 4.14.0 æ„å»ºçš„ç»¼åˆæ€§æ•°å­—å–è¯å·¥å…·ï¼Œç”¨äºåˆ†æç£ç›˜é•œåƒå¹¶å°†å–è¯æ•°æ®æå–åˆ°ç»“æ„åŒ–çš„ SQLite æ•°æ®åº“ä¸­ã€‚
 
-## ¹¦ÄÜÌØĞÔ
+## åŠŸèƒ½ç‰¹æ€§
 
-- **¶à¸ñÊ½Ö§³Ö**: ·ÖÎö E01 (EnCase) ºÍ DD (Ô­Ê¼) ´ÅÅÌ¾µÏñ
-- **¿çÆ½Ì¨·ÖÎö**: Ö§³Ö Windows (NTFS, FAT)¡¢Linux (EXT2/3/4) ºÍ USB Éè±¸ÎÄ¼şÏµÍ³
-- **Èı²ãÊı¾İ¿â¼Ü¹¹**:
-  1. **Ô­Ê¼Êı¾İ¿â**: Í¨¹ı TSK API ÌáÈ¡µÄÍêÕûÎÄ¼şÏµÍ³ÔªÊı¾İ
-  2. **ÊÂ¼şÊı¾İ¿â**: ÎÄ¼şÏµÍ³ÊÂ¼şÊ±¼äÏß£¨´´½¨¡¢ĞŞ¸Ä¡¢·ÃÎÊ¡¢É¾³ı£©
-  3. **ÎÄ¼şÊı¾İ¿â**: °´ÀàĞÍ·ÖÀàµÄÎÄ¼ş£¨13 ¸öÀà±ğ£©
+- **å¤šæ ¼å¼æ”¯æŒ**: åˆ†æ E01 (EnCase) å’Œ DD (åŸå§‹) ç£ç›˜é•œåƒ
+- **è·¨å¹³å°åˆ†æ**: æ”¯æŒ Windows (NTFS, FAT)ã€Linux (EXT2/3/4) å’Œ USB è®¾å¤‡æ–‡ä»¶ç³»ç»Ÿ
+- **ä¸‰å±‚æ•°æ®åº“æ¶æ„**:
+  1. **åŸå§‹æ•°æ®åº“**: é€šè¿‡ TSK API æå–çš„å®Œæ•´æ–‡ä»¶ç³»ç»Ÿå…ƒæ•°æ®
+  2. **äº‹ä»¶æ•°æ®åº“**: æ–‡ä»¶ç³»ç»Ÿäº‹ä»¶æ—¶é—´çº¿ï¼ˆåˆ›å»ºã€ä¿®æ”¹ã€è®¿é—®ã€åˆ é™¤ï¼‰
+  3. **æ–‡ä»¶æ•°æ®åº“**: æŒ‰ç±»å‹åˆ†ç±»çš„æ–‡ä»¶ï¼ˆ13 ä¸ªç±»åˆ«ï¼‰
 
-## ÏµÍ³ÒªÇó
+## ç³»ç»Ÿè¦æ±‚
 
-### ÒÀÀµÏî
+### ä¾èµ–é¡¹
 
-- **C++ ±àÒëÆ÷**: GCC 9+ »ò Clang 10+£¬Ö§³Ö C++20 ±ê×¼
-- **CMake**: 3.20 »ò¸ü¸ß°æ±¾
-- **The Sleuth Kit**: 4.14.0 °æ±¾
-- **SQLite3**: 3.30 »ò¸ü¸ß°æ±¾
-- **libewf**: ÓÃÓÚ E01 ¾µÏñÖ§³Ö
+- **C++ ç¼–è¯‘å™¨**: GCC 9+ æˆ– Clang 10+ï¼Œæ”¯æŒ C++20 æ ‡å‡†
+- **CMake**: 3.20 æˆ–æ›´é«˜ç‰ˆæœ¬
+- **The Sleuth Kit**: 4.14.0 ç‰ˆæœ¬
+- **SQLite3**: 3.30 æˆ–æ›´é«˜ç‰ˆæœ¬
+- **libewf**: ç”¨äº E01 é•œåƒæ”¯æŒ
 
-### Ubuntu/Debian °²×°
+### Ubuntu/Debian å®‰è£…
 
 ```bash
-# °²×°±àÒë¹¤¾ß
+# å®‰è£…ç¼–è¯‘å·¥å…·
 sudo apt-get update
 sudo apt-get install -y build-essential cmake git
 
-# °²×° SQLite3
+# å®‰è£… SQLite3
 sudo apt-get install -y libsqlite3-dev sqlite3
 
-# °²×° libewf ÒÔÖ§³Ö E01 ¸ñÊ½
+# å®‰è£… libewf ä»¥æ”¯æŒ E01 æ ¼å¼
 sudo apt-get install -y libewf-dev
 
-# °²×° The Sleuth Kit 4.14.0
+# å®‰è£… The Sleuth Kit 4.14.0
 wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-4.14.0/sleuthkit-4.14.0.tar.gz
 tar -xzf sleuthkit-4.14.0.tar.gz
 cd sleuthkit-4.14.0
@@ -48,139 +48,139 @@ sudo make install
 sudo ldconfig
 ```
 
-# ÏêÏ¸ÃèÊö
+# è¯¦ç»†æè¿°
 
-## Windows °²×°
+## Windows å®‰è£…
 
-1. °²×° Visual Studio 2019 »ò¸ü¸ß°æ±¾£¨°üº¬ C++ Ö§³Ö£©
-2. °²×° vcpkg °ü¹ÜÀíÆ÷
-3. Í¨¹ı vcpkg °²×°ÒÀÀµÏî£º
+1. å®‰è£… Visual Studio 2019 æˆ–æ›´é«˜ç‰ˆæœ¬ï¼ˆåŒ…å« C++ æ”¯æŒï¼‰
+2. å®‰è£… vcpkg åŒ…ç®¡ç†å™¨
+3. é€šè¿‡ vcpkg å®‰è£…ä¾èµ–é¡¹ï¼š
 
 ```powershell
 vcpkg install sqlite3:x64-windows
 vcpkg install sleuthkit:x64-windows
 ```
 
-## ±àÒëÏîÄ¿
+## ç¼–è¯‘é¡¹ç›®
 
 ```powershell
-# ¿ËÂ¡»ò´´½¨ÏîÄ¿Ä¿Â¼
+# å…‹éš†æˆ–åˆ›å»ºé¡¹ç›®ç›®å½•
 mkdir forensic_analyzer
 cd forensic_analyzer
 
-# ´´½¨¹¹½¨Ä¿Â¼
+# åˆ›å»ºæ„å»ºç›®å½•
 mkdir build
 cd build
 
-# Ê¹ÓÃ CMake ÅäÖÃ
+# ä½¿ç”¨ CMake é…ç½®
 cmake ..
 
-# ±àÒë
+# ç¼–è¯‘
 cmake --build . -j$(nproc)
 
-# °²×°£¨¿ÉÑ¡£©
+# å®‰è£…ï¼ˆå¯é€‰ï¼‰
 sudo cmake --install .
 ```
-## Ê¹ÓÃ·½·¨
+## ä½¿ç”¨æ–¹æ³•
 
-### »ù±¾ÓÃ·¨
+### åŸºæœ¬ç”¨æ³•
 
 ```bash
-./forensic_analyzer <¾µÏñÂ·¾¶>
+./forensic_analyzer <é•œåƒè·¯å¾„>
 ```
-### Êä³ö½á¹û
+### è¾“å‡ºç»“æœ
 
-¹¤¾ß»áÉú³ÉÈı¸ö SQLite Êı¾İ¿â£º
+å·¥å…·ä¼šç”Ÿæˆä¸‰ä¸ª SQLite æ•°æ®åº“ï¼š
 
-1. <¾µÏñÃû>_raw.db: Ô­Ê¼È¡Ö¤Êı¾İ
-2. <¾µÏñÃû>_events.db: ÎÄ¼şÏµÍ³Ê±¼äÏßÊÂ¼ş
-3. <¾µÏñÃû>_files.db: °´ÀàĞÍ·ÖÀàµÄÎÄ¼ş
+1. <é•œåƒå>_raw.db: åŸå§‹å–è¯æ•°æ®
+2. <é•œåƒå>_events.db: æ–‡ä»¶ç³»ç»Ÿæ—¶é—´çº¿äº‹ä»¶
+3. <é•œåƒå>_files.db: æŒ‰ç±»å‹åˆ†ç±»çš„æ–‡ä»¶
 
-## Êı¾İ¿â¼Ü¹¹
+## æ•°æ®åº“æ¶æ„
 
-### Ô­Ê¼Êı¾İ¿â (_raw.db)
+### åŸå§‹æ•°æ®åº“ (_raw.db)
 
-#### files ±í
+#### files è¡¨
 
-´æ´¢ÎÄ¼şÏµÍ³µÄÍêÕûÔªÊı¾İ
+å­˜å‚¨æ–‡ä»¶ç³»ç»Ÿçš„å®Œæ•´å…ƒæ•°æ®
 
 ```sql
 CREATE TABLE files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    inode INTEGER,              -- Ë÷Òı½ÚµãºÅ
-    name TEXT,                  -- ÎÄ¼şÃû
-    path TEXT,                  -- ÍêÕûÂ·¾¶
-    size INTEGER,               -- ÎÄ¼ş´óĞ¡£¨×Ö½Ú£©
-    atime INTEGER,              -- ·ÃÎÊÊ±¼ä£¨Unix Ê±¼ä´Á£©
-    mtime INTEGER,              -- ĞŞ¸ÄÊ±¼ä
-    ctime INTEGER,              -- ×´Ì¬¸Ä±äÊ±¼ä
-    crtime INTEGER,             -- ´´½¨Ê±¼ä£¨³öÉúÊ±¼ä£©
-    type TEXT,                  -- ÎÄ¼şÀàĞÍ£ºREG£¨ÆÕÍ¨ÎÄ¼ş£©¡¢DIR£¨Ä¿Â¼£©¡¢LNK£¨Á´½Ó£©
-    md5 TEXT,                   -- MD5 ¹şÏ£Öµ
-    is_deleted INTEGER,         -- ÊÇ·ñÒÑÉ¾³ı£¨0=·ñ£¬1=ÊÇ£©
-    is_allocated INTEGER,       -- ÊÇ·ñÒÑ·ÖÅä£¨0=·ñ£¬1=ÊÇ£©
-    permissions TEXT,           -- È¨ÏŞ£¨°Ë½øÖÆ£©
-    uid INTEGER,                -- ÓÃ»§ ID
-    gid INTEGER                 -- ×é ID
+    inode INTEGER,              -- ç´¢å¼•èŠ‚ç‚¹å·
+    name TEXT,                  -- æ–‡ä»¶å
+    path TEXT,                  -- å®Œæ•´è·¯å¾„
+    size INTEGER,               -- æ–‡ä»¶å¤§å°ï¼ˆå­—èŠ‚ï¼‰
+    atime INTEGER,              -- è®¿é—®æ—¶é—´ï¼ˆUnix æ—¶é—´æˆ³ï¼‰
+    mtime INTEGER,              -- ä¿®æ”¹æ—¶é—´
+    ctime INTEGER,              -- çŠ¶æ€æ”¹å˜æ—¶é—´
+    crtime INTEGER,             -- åˆ›å»ºæ—¶é—´ï¼ˆå‡ºç”Ÿæ—¶é—´ï¼‰
+    type TEXT,                  -- æ–‡ä»¶ç±»å‹ï¼šREGï¼ˆæ™®é€šæ–‡ä»¶ï¼‰ã€DIRï¼ˆç›®å½•ï¼‰ã€LNKï¼ˆé“¾æ¥ï¼‰
+    md5 TEXT,                   -- MD5 å“ˆå¸Œå€¼
+    is_deleted INTEGER,         -- æ˜¯å¦å·²åˆ é™¤ï¼ˆ0=å¦ï¼Œ1=æ˜¯ï¼‰
+    is_allocated INTEGER,       -- æ˜¯å¦å·²åˆ†é…ï¼ˆ0=å¦ï¼Œ1=æ˜¯ï¼‰
+    permissions TEXT,           -- æƒé™ï¼ˆå…«è¿›åˆ¶ï¼‰
+    uid INTEGER,                -- ç”¨æˆ· ID
+    gid INTEGER                 -- ç»„ ID
 );
 ```
 
-Ë÷Òı:
+ç´¢å¼•:
 
-- idx_files_inode: Ë÷Òı½ÚµãºÅË÷Òı
-- idx_files_path: Â·¾¶Ë÷Òı
-- idx_files_type: ÎÄ¼şÀàĞÍË÷Òı
-- idx_files_deleted: É¾³ı×´Ì¬Ë÷Òı
+- idx_files_inode: ç´¢å¼•èŠ‚ç‚¹å·ç´¢å¼•
+- idx_files_path: è·¯å¾„ç´¢å¼•
+- idx_files_type: æ–‡ä»¶ç±»å‹ç´¢å¼•
+- idx_files_deleted: åˆ é™¤çŠ¶æ€ç´¢å¼•
 
-#### partitions ±í
+#### partitions è¡¨
 
-´æ´¢·ÖÇøĞÅÏ¢¡£
+å­˜å‚¨åˆ†åŒºä¿¡æ¯ã€‚
 
 ```sql
 CREATE TABLE partitions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    partition_num INTEGER,      -- ·ÖÇø±àºÅ
-    start_offset INTEGER,       -- ÆğÊ¼Æ«ÒÆÁ¿
-    length INTEGER,             -- ·ÖÇø³¤¶È
-    description TEXT,           -- ÃèÊö
-    fs_type TEXT               -- ÎÄ¼şÏµÍ³ÀàĞÍ
+    partition_num INTEGER,      -- åˆ†åŒºç¼–å·
+    start_offset INTEGER,       -- èµ·å§‹åç§»é‡
+    length INTEGER,             -- åˆ†åŒºé•¿åº¦
+    description TEXT,           -- æè¿°
+    fs_type TEXT               -- æ–‡ä»¶ç³»ç»Ÿç±»å‹
 );
 ```
 
-#### ÊÂ¼şÊı¾İ¿â (_events.db)
+#### äº‹ä»¶æ•°æ®åº“ (_events.db)
 
-1. events±í,Ö÷ÊÂ¼ş±í£¬°üº¬ËùÓĞÎÄ¼şÏµÍ³ÊÂ¼ş¡£
+1. eventsè¡¨,ä¸»äº‹ä»¶è¡¨ï¼ŒåŒ…å«æ‰€æœ‰æ–‡ä»¶ç³»ç»Ÿäº‹ä»¶ã€‚
 
 ```sql
 CREATE TABLE events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL,     -- ÊÂ¼şÊ±¼ä´Á
-    event_type TEXT NOT NULL,       -- ÊÂ¼şÀàĞÍ
-    file_path TEXT NOT NULL,        -- ÎÄ¼şÂ·¾¶
-    inode INTEGER,                  -- Ë÷Òı½ÚµãºÅ
-    description TEXT,               -- ÊÂ¼şÃèÊö
-    file_size INTEGER,              -- ÎÄ¼ş´óĞ¡
-    file_type TEXT                  -- ÎÄ¼şÀàĞÍ
+    timestamp INTEGER NOT NULL,     -- äº‹ä»¶æ—¶é—´æˆ³
+    event_type TEXT NOT NULL,       -- äº‹ä»¶ç±»å‹
+    file_path TEXT NOT NULL,        -- æ–‡ä»¶è·¯å¾„
+    inode INTEGER,                  -- ç´¢å¼•èŠ‚ç‚¹å·
+    description TEXT,               -- äº‹ä»¶æè¿°
+    file_size INTEGER,              -- æ–‡ä»¶å¤§å°
+    file_type TEXT                  -- æ–‡ä»¶ç±»å‹
 );
 ```
-ÊÂ¼şÀàĞÍ:
-- CREATED: ÎÄ¼ş´´½¨
-- MODIFIED: ÎÄ¼şÄÚÈİĞŞ¸Ä
-- ACCESSED: ÎÄ¼ş·ÃÎÊ/¶ÁÈ¡
-- CHANGED: ÔªÊı¾İ¸ü¸Ä£¨È¨ÏŞ¡¢ËùÓĞÈ¨µÈ£©
-- DELETED: ÎÄ¼şÉ¾³ı
+äº‹ä»¶ç±»å‹:
+- CREATED: æ–‡ä»¶åˆ›å»º
+- MODIFIED: æ–‡ä»¶å†…å®¹ä¿®æ”¹
+- ACCESSED: æ–‡ä»¶è®¿é—®/è¯»å–
+- CHANGED: å…ƒæ•°æ®æ›´æ”¹ï¼ˆæƒé™ã€æ‰€æœ‰æƒç­‰ï¼‰
+- DELETED: æ–‡ä»¶åˆ é™¤
 
 
 
-2. ×¨ÓÃÊÂ¼ş±í:
+2. ä¸“ç”¨äº‹ä»¶è¡¨:
 
-- creation_events: ÎÄ¼ş´´½¨ÊÂ¼ş
-- modification_events: ÎÄ¼şĞŞ¸ÄÊÂ¼ş
-- access_events: ÎÄ¼ş·ÃÎÊÊÂ¼ş
-- change_events: ÔªÊı¾İ¸ü¸ÄÊÂ¼ş
-- deletion_events: ÎÄ¼şÉ¾³ıÊÂ¼ş
+- creation_events: æ–‡ä»¶åˆ›å»ºäº‹ä»¶
+- modification_events: æ–‡ä»¶ä¿®æ”¹äº‹ä»¶
+- access_events: æ–‡ä»¶è®¿é—®äº‹ä»¶
+- change_events: å…ƒæ•°æ®æ›´æ”¹äº‹ä»¶
+- deletion_events: æ–‡ä»¶åˆ é™¤äº‹ä»¶
 
-Ã¿¸ö±íµÄ½á¹¹£º
+æ¯ä¸ªè¡¨çš„ç»“æ„ï¼š
 ```sql
 CREATE TABLE <event_type>_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,8 +194,8 @@ CREATE TABLE <event_type>_events (
 
 
 
-3. ÊÓÍ¼:
-	1, timeline ÊÓÍ¼: °´Ê±¼äË³ĞòÏÔÊ¾ËùÓĞÊÂ¼ş:
+3. è§†å›¾:
+	1, timeline è§†å›¾: æŒ‰æ—¶é—´é¡ºåºæ˜¾ç¤ºæ‰€æœ‰äº‹ä»¶:
 ```sql
 CREATE VIEW timeline AS
 SELECT 
@@ -210,7 +210,7 @@ FROM events
 ORDER BY timestamp DESC;
 ```
 
-	2, event_statistics ÊÓÍ¼: ÊÂ¼şÍ³¼ÆÕªÒª
+	2, event_statistics è§†å›¾: äº‹ä»¶ç»Ÿè®¡æ‘˜è¦
 ```sql
 CREATE VIEW event_statistics AS
 SELECT 
@@ -224,7 +224,7 @@ FROM events
 GROUP BY event_type;
 ```
 
-	3, hourly_activity ÊÓÍ¼: °´Ğ¡Ê±Í³¼ÆµÄ»î¶¯
+	3, hourly_activity è§†å›¾: æŒ‰å°æ—¶ç»Ÿè®¡çš„æ´»åŠ¨
 ```sql
 CREATE VIEW hourly_activity AS
 SELECT 
@@ -236,96 +236,96 @@ GROUP BY hour, event_type
 ORDER BY hour DESC;
 ```
 
-### ÎÄ¼şÊı¾İ¿â (_files.db)
+### æ–‡ä»¶æ•°æ®åº“ (_files.db)
 
-#### ÎÄ¼ş·ÖÀà±í£¨13ÖÖÀàĞÍ£©
+#### æ–‡ä»¶åˆ†ç±»è¡¨ï¼ˆ13ç§ç±»å‹ï¼‰
 
-1. images (Í¼Æ¬ÎÄ¼ş)
-   - À©Õ¹Ãû: jpg, jpeg, png, gif, bmp, tiff, svg, webp, raw, cr2, nef, psd, ai, heic µÈ
-   - ÓÃÍ¾: ÕÕÆ¬¡¢Í¼ĞÎ¡¢Éè¼ÆÎÄ¼ş
+1. images (å›¾ç‰‡æ–‡ä»¶)
+   - æ‰©å±•å: jpg, jpeg, png, gif, bmp, tiff, svg, webp, raw, cr2, nef, psd, ai, heic ç­‰
+   - ç”¨é€”: ç…§ç‰‡ã€å›¾å½¢ã€è®¾è®¡æ–‡ä»¶
 
-2. videos (ÊÓÆµÎÄ¼ş)
+2. videos (è§†é¢‘æ–‡ä»¶)
 
-   - À©Õ¹Ãû: mp4, avi, mkv, mov, wmv, flv, webm, mpg, mpeg, 3gp µÈ
+   - æ‰©å±•å: mp4, avi, mkv, mov, wmv, flv, webm, mpg, mpeg, 3gp ç­‰
 
-   - ÓÃÍ¾: ÊÓÆµÂ¼Ïñ¡¢µçÓ°¡¢¼à¿ØÂ¼Ïñ
-
-
-3. audio_files (ÒôÆµÎÄ¼ş)
-
-- À©Õ¹Ãû: mp3, wav, flac, aac, ogg, wma, m4a, opus µÈ
-- ÓÃÍ¾: ÒôÀÖ¡¢Â¼Òô¡¢²¥¿Í
-
-4. documents (ÎÄµµÎÄ¼ş)
-    - À©Õ¹Ãû: pdf, doc, docx, xls, xlsx, ppt, pptx, txt, csv, rtf, odt µÈ
-    - ÓÃÍ¾: °ì¹«ÎÄµµ¡¢±¨¸æ¡¢±í¸ñ¡¢ÑİÊ¾ÎÄ¸å
-
-5. archives (Ñ¹ËõÎÄ¼ş)
-    - À©Õ¹Ãû: zip, rar, 7z, tar, gz, bz2, iso, apk, jar µÈ
-    - ÓÃÍ¾: Ñ¹Ëõ°ü¡¢°²×°°ü¡¢±¸·İÎÄ¼ş
-
-6. executables (¿ÉÖ´ĞĞÎÄ¼ş)
-    - À©Õ¹Ãû: exe, dll, so, dylib, app, bin, sh, bat, cmd, ps1 µÈ
-    - ÓÃÍ¾: ³ÌĞò¡¢½Å±¾¡¢ÏµÍ³¿â
-
-7. databases (Êı¾İ¿âÎÄ¼ş)
-    - À©Õ¹Ãû: db, sqlite, sqlite3, mdb, accdb, sql, dbf µÈ
-    - ÓÃÍ¾: Êı¾İ¿âÎÄ¼ş¡¢±¸·İ
-
-8. source_code (Ô´´úÂëÎÄ¼ş)
-    - À©Õ¹Ãû: c, cpp, java, py, js, php, go, rs, swift, html, css µÈ
-    - ÓÃÍ¾: ³ÌĞòÔ´´úÂë¡¢½Å±¾
-
-9. web_files (ÍøÒ³ÎÄ¼ş)
-    - À©Õ¹Ãû: html, htm, css, xml, json, yaml, jsp, asp µÈ
-    - ÓÃÍ¾: ÍøÒ³¡¢ÅäÖÃÎÄ¼ş
-
-10. email_files (ÓÊ¼şÎÄ¼ş)
-    - À©Õ¹Ãû: eml, msg, pst, ost, mbox, emlx µÈ
-    - ÓÃÍ¾: µç×ÓÓÊ¼ş¡¢ÓÊÏäÊı¾İ
-
-11. system_files (ÏµÍ³ÎÄ¼ş)
-    - À©Õ¹Ãû: ini, cfg, conf, reg, dat, tmp, log, cache µÈ
-    - ÓÃÍ¾: ÏµÍ³ÅäÖÃ¡¢ÈÕÖ¾¡¢ÁÙÊ±ÎÄ¼ş
-
-12. encrypted_files (¼ÓÃÜÎÄ¼ş)
-     - À©Õ¹Ãû: gpg, pgp, aes, encrypted, p12, pfx, pem, key µÈ
-     - ÓÃÍ¾: ¼ÓÃÜÎÄ¼ş¡¢Ö¤Êé¡¢ÃÜÔ¿
-
-13. unknown_files (Î´ÖªÎÄ¼ş)
-     - ÎŞ·¨Ê¶±ğÀ©Õ¹Ãû»òÎ´·ÖÀàµÄÎÄ¼ş
+   - ç”¨é€”: è§†é¢‘å½•åƒã€ç”µå½±ã€ç›‘æ§å½•åƒ
 
 
+3. audio_files (éŸ³é¢‘æ–‡ä»¶)
 
-±í½á¹¹(Ã¿¸ö·ÖÀà±í¶¼ÓĞÏàÍ¬µÄ½á¹¹):
+- æ‰©å±•å: mp3, wav, flac, aac, ogg, wma, m4a, opus ç­‰
+- ç”¨é€”: éŸ³ä¹ã€å½•éŸ³ã€æ’­å®¢
+
+4. documents (æ–‡æ¡£æ–‡ä»¶)
+    - æ‰©å±•å: pdf, doc, docx, xls, xlsx, ppt, pptx, txt, csv, rtf, odt ç­‰
+    - ç”¨é€”: åŠå…¬æ–‡æ¡£ã€æŠ¥å‘Šã€è¡¨æ ¼ã€æ¼”ç¤ºæ–‡ç¨¿
+
+5. archives (å‹ç¼©æ–‡ä»¶)
+    - æ‰©å±•å: zip, rar, 7z, tar, gz, bz2, iso, apk, jar ç­‰
+    - ç”¨é€”: å‹ç¼©åŒ…ã€å®‰è£…åŒ…ã€å¤‡ä»½æ–‡ä»¶
+
+6. executables (å¯æ‰§è¡Œæ–‡ä»¶)
+    - æ‰©å±•å: exe, dll, so, dylib, app, bin, sh, bat, cmd, ps1 ç­‰
+    - ç”¨é€”: ç¨‹åºã€è„šæœ¬ã€ç³»ç»Ÿåº“
+
+7. databases (æ•°æ®åº“æ–‡ä»¶)
+    - æ‰©å±•å: db, sqlite, sqlite3, mdb, accdb, sql, dbf ç­‰
+    - ç”¨é€”: æ•°æ®åº“æ–‡ä»¶ã€å¤‡ä»½
+
+8. source_code (æºä»£ç æ–‡ä»¶)
+    - æ‰©å±•å: c, cpp, java, py, js, php, go, rs, swift, html, css ç­‰
+    - ç”¨é€”: ç¨‹åºæºä»£ç ã€è„šæœ¬
+
+9. web_files (ç½‘é¡µæ–‡ä»¶)
+    - æ‰©å±•å: html, htm, css, xml, json, yaml, jsp, asp ç­‰
+    - ç”¨é€”: ç½‘é¡µã€é…ç½®æ–‡ä»¶
+
+10. email_files (é‚®ä»¶æ–‡ä»¶)
+    - æ‰©å±•å: eml, msg, pst, ost, mbox, emlx ç­‰
+    - ç”¨é€”: ç”µå­é‚®ä»¶ã€é‚®ç®±æ•°æ®
+
+11. system_files (ç³»ç»Ÿæ–‡ä»¶)
+    - æ‰©å±•å: ini, cfg, conf, reg, dat, tmp, log, cache ç­‰
+    - ç”¨é€”: ç³»ç»Ÿé…ç½®ã€æ—¥å¿—ã€ä¸´æ—¶æ–‡ä»¶
+
+12. encrypted_files (åŠ å¯†æ–‡ä»¶)
+     - æ‰©å±•å: gpg, pgp, aes, encrypted, p12, pfx, pem, key ç­‰
+     - ç”¨é€”: åŠ å¯†æ–‡ä»¶ã€è¯ä¹¦ã€å¯†é’¥
+
+13. unknown_files (æœªçŸ¥æ–‡ä»¶)
+     - æ— æ³•è¯†åˆ«æ‰©å±•åæˆ–æœªåˆ†ç±»çš„æ–‡ä»¶
+
+
+
+è¡¨ç»“æ„(æ¯ä¸ªåˆ†ç±»è¡¨éƒ½æœ‰ç›¸åŒçš„ç»“æ„):
 ```sql
 CREATE TABLE <category> (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    inode INTEGER,              -- Ë÷Òı½ÚµãºÅ
-    name TEXT,                  -- ÎÄ¼şÃû
-    path TEXT,                  -- ÍêÕûÂ·¾¶
-    size INTEGER,               -- ÎÄ¼ş´óĞ¡
-    extension TEXT,             -- ÎÄ¼şÀ©Õ¹Ãû
-    mtime INTEGER,              -- ĞŞ¸ÄÊ±¼ä
-    ctime INTEGER,              -- ×´Ì¬¸Ä±äÊ±¼ä
-    is_deleted INTEGER,         -- ÊÇ·ñÒÑÉ¾³ı
-    md5 TEXT                    -- MD5 ¹şÏ£Öµ
+    inode INTEGER,              -- ç´¢å¼•èŠ‚ç‚¹å·
+    name TEXT,                  -- æ–‡ä»¶å
+    path TEXT,                  -- å®Œæ•´è·¯å¾„
+    size INTEGER,               -- æ–‡ä»¶å¤§å°
+    extension TEXT,             -- æ–‡ä»¶æ‰©å±•å
+    mtime INTEGER,              -- ä¿®æ”¹æ—¶é—´
+    ctime INTEGER,              -- çŠ¶æ€æ”¹å˜æ—¶é—´
+    is_deleted INTEGER,         -- æ˜¯å¦å·²åˆ é™¤
+    md5 TEXT                    -- MD5 å“ˆå¸Œå€¼
 );
 ```
 
 
 
-Ë÷Òı:
+ç´¢å¼•:
 
-- idx_<category>_path: Â·¾¶Ë÷Òı
-- idx_<category>_extension: À©Õ¹ÃûË÷Òı
-- idx_<category>_size: ´óĞ¡Ë÷Òı
+- idx_<category>_path: è·¯å¾„ç´¢å¼•
+- idx_<category>_extension: æ‰©å±•åç´¢å¼•
+- idx_<category>_size: å¤§å°ç´¢å¼•
 
 
 
-ÊÓÍ¼
+è§†å›¾
 
-1. file_summaryÊÓÍ¼: ÎÄ¼ş·ÖÀàÍ³¼ÆÕªÒª
+1. file_summaryè§†å›¾: æ–‡ä»¶åˆ†ç±»ç»Ÿè®¡æ‘˜è¦
 
 ```sql
 CREATE VIEW file_summary AS
@@ -338,10 +338,10 @@ SELECT
 FROM images
 UNION ALL
 SELECT 'Videos', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM videos
--- ... ÆäËûÀà±ğ
+-- ... å…¶ä»–ç±»åˆ«
 ```
 
-2. extension_statistics ÊÓÍ¼: À©Õ¹ÃûÍ³¼Æ
+2. extension_statistics è§†å›¾: æ‰©å±•åç»Ÿè®¡
 
 ```sql
 CREATE VIEW extension_statistics AS
@@ -353,13 +353,13 @@ FROM (
     SELECT extension, size FROM images
     UNION ALL
     SELECT extension, size FROM videos
-    -- ... ÆäËûÀà±ğ
+    -- ... å…¶ä»–ç±»åˆ«
 )
 GROUP BY extension
 ORDER BY count DESC;
 ```
 
-3. deleted_files ÊÓÍ¼: ËùÓĞÒÑÉ¾³ıµÄÎÄ¼ş
+3. deleted_files è§†å›¾: æ‰€æœ‰å·²åˆ é™¤çš„æ–‡ä»¶
 
 ```sql
 CREATE VIEW deleted_files AS
@@ -373,7 +373,7 @@ FROM images
 WHERE is_deleted = 1
 UNION ALL
 SELECT 'Videos', name, path, size, extension FROM videos WHERE is_deleted = 1
--- ... ÆäËûÀà±ğ
+-- ... å…¶ä»–ç±»åˆ«
 ```
 
-# ½áÊø
+# ç»“æŸ
