@@ -87,6 +87,7 @@ private:
      * @return List of matching file records
      */
     std::vector<FileRecord> searchFiles(const std::string& whereClause);
+    std::vector<FileRecord> searchFilesInTable(const std::string& tableName, const std::string& whereClause);
 
     /**
      * Extract a single file from the image

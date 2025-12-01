@@ -169,8 +169,12 @@ int main(int argc, char* argv[]) {
 		// Determine image path from database name
 		std::string imagePath;
 		std::string dbName = fs::path(cmdArgs.databasePath).stem().string();
-		// Remove _raw suffix if present
-		if (dbName.length() > 4 && dbName.substr(dbName.length() - 4) == "_raw") {
+		// Remove database type suffixes if present
+		if (dbName.length() > 6 && dbName.substr(dbName.length() - 6) == "_files") {
+			dbName = dbName.substr(0, dbName.length() - 6);
+		} else if (dbName.length() > 7 && dbName.substr(dbName.length() - 7) == "_events") {
+			dbName = dbName.substr(0, dbName.length() - 7);
+		} else if (dbName.length() > 4 && dbName.substr(dbName.length() - 4) == "_raw") {
 			dbName = dbName.substr(0, dbName.length() - 4);
 		}
 

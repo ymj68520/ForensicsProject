@@ -172,6 +172,39 @@ std::vector<FileRecord> FileExtractor::searchFiles(const std::string& whereClaus
     return results;
 }
 
+std::vector<FileRecord> FileExtractor::searchFilesInTable(const std::string& tableName, const std::string& whereClause) {
+    std::vector<FileRecord> results;
+
+    std::string sql = "SELECT inode, name, path, size, mtime, ctime, is_deleted, md5 "
+                      "FROM " + tableName + " WHERE " + whereClause;
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(dbManager_->getDb(), sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Error preparing query: " << sqlite3_errmsg(dbManager_->getDb()) << std::endl;
+        return results;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        FileRecord record;
+        record.inode = sqlite3_column_int64(stmt, 0);
+        record.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        record.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        record.size = sqlite3_column_int64(stmt, 3);
+        record.mtime = sqlite3_column_int64(stmt, 4);
+        record.ctime = sqlite3_column_int64(stmt, 5);
+        record.isDeleted = sqlite3_column_int(stmt, 6);
+        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        record.md5 = md5Ptr ? md5Ptr : "";
+        record.type = "REG";  // Assume regular file
+        record.isAllocated = 1;  // Assume allocated
+
+        results.push_back(record);
+    }
+
+    sqlite3_finalize(stmt);
+    return results;
+}
+
 bool FileExtractor::matchWildcard(const std::string& filename, const std::string& pattern) {
     // Simple wildcard matching (* and ?)
     size_t fpos = 0, ppos = 0;
@@ -288,12 +321,13 @@ int FileExtractor::extractByExtension(const std::string& extensions, const std::
 int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted) {
     std::cout << "Extracting all files..." << std::endl;
 
-    std::string whereClause = "type='REG'";
+    // For now, extract from documents table (since files are classified into categories)
+    std::string whereClause = "1=1";  // All files in documents table
     if (!includeDeleted) {
-        whereClause += " AND is_allocated=1";
+        whereClause += " AND is_deleted=0";
     }
 
-    auto files = searchFiles(whereClause);
+    auto files = searchFilesInTable("documents", whereClause);
     std::cout << "Found " << files.size() << " files to extract" << std::endl;
 
     if (files.empty()) {
