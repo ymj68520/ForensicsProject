@@ -10,9 +10,9 @@
 #endif
 
 #include "ImageAnalyzer/ImageAnalyzer.h"
-#include "ImageAnalyzer/EventExtractor.h"
-#include "ImageAnalyzer/FileClassifier.h"
-#include "ImageAnalyzer/FileExtractor.h"
+#include "DatabaseManager/EventExtractor/EventExtractor.h"
+#include "DatabaseManager/FileClassifier/FileClassifier.h"
+#include "DatabaseManager/FileExtractor/FileExtractor.h"
 
 
 namespace fs = std::filesystem;

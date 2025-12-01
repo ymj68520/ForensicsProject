@@ -36,10 +36,10 @@ link_directories(${TSK_LIBRARY_DIR})
 set(SOURCES
     main.cpp
     ImageAnalyzer/ImageAnalyzer.cpp
-    ImageAnalyzer/DatabaseManager.cpp
-    ImageAnalyzer/EventExtractor.cpp
-    ImageAnalyzer/FileClassifier.cpp
-    FileExtractor/FileExtractor.cpp
+    DatabaseManager/DatabaseManager.cpp
+    DatabaseManager/EventExtractor/EventExtractor.cpp
+    DatabaseManager/FileClassifier/FileClassifier.cpp
+    DatabaseManager/FileExtractor/FileExtractor.cpp
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
 )

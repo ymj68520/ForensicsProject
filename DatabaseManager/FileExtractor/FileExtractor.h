@@ -7,7 +7,7 @@
 #include <memory>
 #include <functional>
 #include <tsk/libtsk.h>
-#include "DatabaseManager.h"
+#include "DatabaseManager/DatabaseManager.h"
 
 /**
  * FileExtractor - Extract files from forensic images

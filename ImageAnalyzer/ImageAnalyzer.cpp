@@ -1,5 +1,5 @@
 #include "ImageAnalyzer.h"
-#include "DatabaseManager.h"
+#include "DatabaseManager/DatabaseManager.h"
 #include "XFSHelper.h"
 #include "NativeFilesystemWalker.h"
 #include <iostream>
