@@ -39,7 +39,7 @@ set(SOURCES
     ImageAnalyzer/DatabaseManager.cpp
     ImageAnalyzer/EventExtractor.cpp
     ImageAnalyzer/FileClassifier.cpp
-    ImageAnalyzer/FileExtractor.cpp
+    FileExtractor/FileExtractor.cpp
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
 )
