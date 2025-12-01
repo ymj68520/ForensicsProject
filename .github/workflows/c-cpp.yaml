@@ -32,4 +32,4 @@ jobs:
 
     - name: Test
       working-directory: build
-      run: ctest -C Release --output-on-failure || true
+      run: ctest -C Release --output-on-failure
