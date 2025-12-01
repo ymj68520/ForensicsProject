@@ -6,6 +6,7 @@
 # Custom files
 /logs/
 /.claude
+/sleuthkit
 
 
 # User-specific files
