@@ -9,10 +9,11 @@
 #include <Windows.h>
 #endif
 
-#include "ImageAnalyzer.h"
-#include "EventExtractor.h"
-#include "FileClassifier.h"
-#include "FileExtractor.h"
+#include "ImageAnalyzer/ImageAnalyzer.h"
+#include "ImageAnalyzer/EventExtractor.h"
+#include "ImageAnalyzer/FileClassifier.h"
+#include "ImageAnalyzer/FileExtractor.h"
+
 
 namespace fs = std::filesystem;
 

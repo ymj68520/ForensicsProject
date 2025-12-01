@@ -35,13 +35,13 @@ link_directories(${TSK_LIBRARY_DIR})
 # Source files
 set(SOURCES
     main.cpp
-    ImageAnalyzer.cpp
-    DatabaseManager.cpp
-    EventExtractor.cpp
-    FileClassifier.cpp
-    FileExtractor.cpp
-    XFSHelper.cpp
-    NativeFilesystemWalker.cpp
+    ImageAnalyzer/ImageAnalyzer.cpp
+    ImageAnalyzer/DatabaseManager.cpp
+    ImageAnalyzer/EventExtractor.cpp
+    ImageAnalyzer/FileClassifier.cpp
+    ImageAnalyzer/FileExtractor.cpp
+    ImageAnalyzer/XFSHelper.cpp
+    ImageAnalyzer/NativeFilesystemWalker.cpp
 )
 
 # Create executable
