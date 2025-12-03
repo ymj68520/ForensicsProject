@@ -38,6 +38,13 @@ sudo apt-get install -y libsqlite3-dev sqlite3
 # 安装 libewf 以支持 E01 格式
 sudo apt-get install -y libewf-dev
 
+# 安装 HTTP 服务支持
+sudo apt-get install libasio-dev nlohmann-json3-dev
+git clone https://github.com/CrowCpp/Crow.git
+cd Crow && sudo mkdir build && cd build
+cmake .. -DCROW_BUILD_EXAMPLES=OFF -DCROW_BUILD_TESTS=OFF
+sudo make install
+
 # 安装 The Sleuth Kit 4.14.0
 wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-4.14.0/sleuthkit-4.14.0.tar.gz
 tar -xzf sleuthkit-4.14.0.tar.gz
