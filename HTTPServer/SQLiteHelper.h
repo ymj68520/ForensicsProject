@@ -1,14 +1,14 @@
 #pragma once
 #include <sqlite3.h>
-#include <crow/json.h>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
 class SQLiteHelper {
 public:
-    static crow::json::wvalue get_file_summary(const std::string& db_path) {
+    static nlohmann::json get_file_summary(const std::string& db_path) {
         sqlite3* db;
-        crow::json::wvalue result;
+        nlohmann::json result;
         
         if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
             result["error"] = "Cannot open database";
@@ -19,9 +19,9 @@ public:
         sqlite3_stmt* stmt;
 
         if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-            std::vector<crow::json::wvalue> rows;
+            std::vector<nlohmann::json> rows;
             while (sqlite3_step(stmt) == SQLITE_ROW) {
-                crow::json::wvalue row;
+                nlohmann::json row;
                 row["category"] = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
                 row["file_count"] = sqlite3_column_int(stmt, 1);
                 row["total_size"] = (long long)sqlite3_column_int64(stmt, 2);

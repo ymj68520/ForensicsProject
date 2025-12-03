@@ -8,6 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Find required packages
 find_package(SQLite3 REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system thread)
 
 # TSK library paths
 if(WIN32)
@@ -28,6 +29,8 @@ include_directories(
     ${CMAKE_SOURCE_DIR}
     ${TSK_INCLUDE_DIR}
     ${SQLite3_INCLUDE_DIRS}
+    ${Boost_INCLUDE_DIRS}
+    # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
 )
 
 link_directories(${TSK_LIBRARY_DIR})
@@ -42,6 +45,7 @@ set(SOURCES
     DatabaseManager/FileExtractor/FileExtractor.cpp
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
+    HTTPServer/HTTPserver.cpp
 )
 
 # Create executable
@@ -52,6 +56,7 @@ if(WIN32)
     target_link_libraries(forensic_analyzer
         ${TSK_LIBRARIES}
         sqlite3.lib
+        ${Boost_LIBRARIES}
         ${PLATFORM_LIBRARIES}
     )
 else()
@@ -59,6 +64,7 @@ else()
         ${TSK_LIBRARIES}
         ewf
         ${SQLite3_LIBRARIES}
+        ${Boost_LIBRARIES}
         ${PLATFORM_LIBRARIES}
     )
 endif()

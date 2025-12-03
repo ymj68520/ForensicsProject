@@ -13,6 +13,7 @@
 #include "DatabaseManager/EventExtractor/EventExtractor.h"
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
+#include "HTTPServer/HTTPserver.h"
 
 
 namespace fs = std::filesystem;
@@ -27,6 +28,8 @@ struct CommandLineArgs {
 	bool extractAll = false;
 	bool includeDeleted = false;
 	bool extractMode = false;
+	bool httpServer = false;
+	int httpPort = 8080;
 };
 
 void printUsage(const char* programName) {
@@ -51,6 +54,8 @@ void printUsage(const char* programName) {
 	std::cout << "  --extract-all               Extract all files\n";
 	std::cout << "  --output-dir <path>         Output directory (default: extracted_files)\n";
 	std::cout << "  --include-deleted           Include deleted files in extraction\n\n";
+	std::cout << "HTTP Server options:\n";
+	std::cout << "  --http-server [port]        Start HTTP server (default port 8080)\n\n";
 	std::cout << "Examples:\n";
 	std::cout << "  # Analyze image (auto-detect XFS mode)\n";
 	std::cout << "  " << programName << " image.dd\n\n";
@@ -96,6 +101,11 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			} else {
 				std::cerr << "Error: Invalid XFS mode '" << mode << "'" << std::endl;
 				std::cerr << "Valid options: auto, native, pure" << std::endl;
+			}
+		} else if (arg == "--http-server") {
+			args.httpServer = true;
+			if (i + 1 < argc && argv[i + 1][0] != '-') {
+				args.httpPort = std::stoi(argv[++i]);
 			}
 		} else if (arg[0] != '-') {
 			// Assume it's image path if no leading dash
@@ -148,6 +158,14 @@ int main(int argc, char* argv[]) {
 #else
 	CommandLineArgs cmdArgs = parseArgs(argc, argv);
 #endif
+
+	if (cmdArgs.httpServer) {
+		std::cout << "Starting HTTP Server on port " << cmdArgs.httpPort << std::endl;
+		asio::io_context ioc;
+		forensics::HTTPServer server(ioc);
+		server.run(cmdArgs.httpPort);
+		return 0;
+	}
 
 	// Determine mode: extraction or analysis
 	if (cmdArgs.extractMode) {
