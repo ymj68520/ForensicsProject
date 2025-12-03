@@ -49,6 +49,36 @@ bool FileClassifier::openDatabases() {
 }
 
 bool FileClassifier::createCategoryTables() {
+	// Create main files table first
+	std::string createFilesTable = R"(
+        CREATE TABLE IF NOT EXISTS files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inode INTEGER,
+            name TEXT,
+            path TEXT,
+            size INTEGER,
+            extension TEXT,
+            category TEXT,
+            type TEXT,
+            mtime INTEGER,
+            ctime INTEGER,
+            is_deleted INTEGER,
+            md5 TEXT
+        );
+    )";
+
+	char* errMsg = nullptr;
+	int rc = sqlite3_exec(fileDb_, createFilesTable.c_str(), nullptr, nullptr, &errMsg);
+	if (rc != SQLITE_OK) {
+		std::cerr << "Failed to create files table: " << errMsg << std::endl;
+		sqlite3_free(errMsg);
+		return false;
+	}
+
+	// Create indices for files table
+	sqlite3_exec(fileDb_, "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);", nullptr, nullptr, nullptr);
+	sqlite3_exec(fileDb_, "CREATE INDEX IF NOT EXISTS idx_files_category ON files(category);", nullptr, nullptr, nullptr);
+
 	// Create table for each category
 	std::vector<FileCategory> categories = {
 		FileCategory::IMAGE,
@@ -265,6 +295,28 @@ bool FileClassifier::classifyFiles() {
 		sqlite3_bind_int64(insertStmt, 7, ctime);
 		sqlite3_bind_int(insertStmt, 8, isDeleted);
 		sqlite3_bind_text(insertStmt, 9, md5.c_str(), -1, SQLITE_TRANSIENT);
+
+		sqlite3_step(insertStmt);
+		sqlite3_finalize(insertStmt);
+
+		// Also insert into main files table
+		std::string categoryName = getCategoryName(category);
+		std::string filesInsertSql = "INSERT INTO files "
+			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5) "
+			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?);";
+
+		sqlite3_prepare_v2(fileDb_, filesInsertSql.c_str(), -1, &insertStmt, nullptr);
+
+		sqlite3_bind_int64(insertStmt, 1, inode);
+		sqlite3_bind_text(insertStmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(insertStmt, 3, path.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int64(insertStmt, 4, size);
+		sqlite3_bind_text(insertStmt, 5, extension.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(insertStmt, 6, categoryName.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int64(insertStmt, 7, mtime);
+		sqlite3_bind_int64(insertStmt, 8, ctime);
+		sqlite3_bind_int(insertStmt, 9, isDeleted);
+		sqlite3_bind_text(insertStmt, 10, md5.c_str(), -1, SQLITE_TRANSIENT);
 
 		sqlite3_step(insertStmt);
 		sqlite3_finalize(insertStmt);

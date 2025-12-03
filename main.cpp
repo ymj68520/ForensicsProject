@@ -179,14 +179,21 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 
-		if (!fs::exists(cmdArgs.databasePath)) {
-			std::cerr << "Error: Database file not found: " << cmdArgs.databasePath << std::endl;
+		// If raw database is specified, use files database instead
+		std::string dbPath = cmdArgs.databasePath;
+		if (dbPath.length() > 7 && dbPath.substr(dbPath.length() - 7) == "_raw.db") {
+			dbPath = dbPath.substr(0, dbPath.length() - 7) + "_files.db";
+			std::cout << "Note: Using classified files database: " << dbPath << std::endl;
+		}
+
+		if (!fs::exists(dbPath)) {
+			std::cerr << "Error: Database file not found: " << dbPath << std::endl;
 			return 1;
 		}
 
 		// Determine image path from database name
 		std::string imagePath;
-		std::string dbName = fs::path(cmdArgs.databasePath).stem().string();
+		std::string dbName = fs::path(dbPath).stem().string();
 		// Remove database type suffixes if present
 		if (dbName.length() > 6 && dbName.substr(dbName.length() - 6) == "_files") {
 			dbName = dbName.substr(0, dbName.length() - 6);
@@ -197,7 +204,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Try common extensions
-		std::vector<std::string> extensions = {".dd", ".DD", ".001", ".E01", ".raw"};
+		std::vector<std::string> extensions = {".dd", ".DD", ".001", ".e01", ".E01", ".raw", ".RAW"};
 		for (const auto& ext : extensions) {
 			std::string testPath = dbName + ext;
 			if (fs::exists(testPath)) {
@@ -218,7 +225,7 @@ int main(int argc, char* argv[]) {
 		std::cout << std::endl;
 
 		try {
-			auto extractor = std::make_unique<FileExtractor>(imagePath, cmdArgs.databasePath);
+			auto extractor = std::make_unique<FileExtractor>(imagePath, dbPath);
 
 			if (!extractor->initialize()) {
 				std::cerr << "Error: Failed to initialize file extractor" << std::endl;

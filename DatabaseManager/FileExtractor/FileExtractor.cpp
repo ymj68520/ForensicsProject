@@ -138,8 +138,7 @@ void FileExtractor::closeImage() {
 std::vector<FileRecord> FileExtractor::searchFiles(const std::string& whereClause) {
     std::vector<FileRecord> results;
 
-    std::string sql = "SELECT inode, name, path, size, atime, mtime, ctime, crtime, "
-                      "type, is_deleted, is_allocated, permissions, uid, gid "
+    std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5 "
                       "FROM files WHERE " + whereClause;
 
     sqlite3_stmt* stmt;
@@ -154,16 +153,20 @@ std::vector<FileRecord> FileExtractor::searchFiles(const std::string& whereClaus
         record.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
         record.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         record.size = sqlite3_column_int64(stmt, 3);
-        record.atime = sqlite3_column_int64(stmt, 4);
-        record.mtime = sqlite3_column_int64(stmt, 5);
-        record.ctime = sqlite3_column_int64(stmt, 6);
-        record.crtime = sqlite3_column_int64(stmt, 7);
-        record.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
-        record.isDeleted = sqlite3_column_int(stmt, 9);
-        record.isAllocated = sqlite3_column_int(stmt, 10);
-        record.permissions = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11));
-        record.uid = sqlite3_column_int(stmt, 12);
-        record.gid = sqlite3_column_int(stmt, 13);
+        record.mtime = sqlite3_column_int64(stmt, 4);
+        record.ctime = sqlite3_column_int64(stmt, 5);
+        record.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        record.isDeleted = sqlite3_column_int(stmt, 7);
+        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
+        record.md5 = md5Ptr ? md5Ptr : "";
+
+        // Set defaults for missing fields
+        record.atime = record.mtime;
+        record.crtime = record.ctime;
+        record.isAllocated = 1;
+        record.permissions = "0644";
+        record.uid = 0;
+        record.gid = 0;
 
         results.push_back(record);
     }
@@ -321,13 +324,13 @@ int FileExtractor::extractByExtension(const std::string& extensions, const std::
 int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted) {
     std::cout << "Extracting all files..." << std::endl;
 
-    // For now, extract from documents table (since files are classified into categories)
-    std::string whereClause = "1=1";  // All files in documents table
+    // Extract from main files table
+    std::string whereClause = "type = 'REG'";
     if (!includeDeleted) {
         whereClause += " AND is_deleted=0";
     }
 
-    auto files = searchFilesInTable("documents", whereClause);
+    auto files = searchFiles(whereClause);
     std::cout << "Found " << files.size() << " files to extract" << std::endl;
 
     if (files.empty()) {
