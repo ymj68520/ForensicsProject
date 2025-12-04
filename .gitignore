@@ -8,6 +8,7 @@
 /.claude
 /sleuthkit
 /.vscode
+/tests/
 
 
 # User-specific files

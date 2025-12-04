@@ -66,6 +66,14 @@ public:
      */
     bool extractFileByInode(int64_t inode, const std::string& outputPath);
 
+    /**
+     * Extract a specific file by path
+     * @param filePath File path in the image
+     * @param outputPath Output file path
+     * @return true if successful
+     */
+    bool extractFileByPath(const std::string& filePath, const std::string& outputPath);
+
 private:
     std::string imagePath_;
     std::string dbPath_;

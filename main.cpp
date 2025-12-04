@@ -14,6 +14,7 @@
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "HTTPServer/HTTPserver.h"
+#include "AndroidAnalyzer/AndroidAnalyzer.h"
 
 
 namespace fs = std::filesystem;
@@ -30,6 +31,7 @@ struct CommandLineArgs {
 	bool extractMode = false;
 	bool httpServer = false;
 	int httpPort = 8080;
+	bool androidAnalyze = false;
 };
 
 void printUsage(const char* programName) {
@@ -56,6 +58,8 @@ void printUsage(const char* programName) {
 	std::cout << "  --include-deleted           Include deleted files in extraction\n\n";
 	std::cout << "HTTP Server options:\n";
 	std::cout << "  --http-server [port]        Start HTTP server (default port 8080)\n\n";
+	std::cout << "Android Analysis options:\n";
+	std::cout << "  --android-analyze           Analyze Android application data (SMS, contacts, etc.)\n\n";
 	std::cout << "Examples:\n";
 	std::cout << "  # Analyze image (auto-detect XFS mode)\n";
 	std::cout << "  " << programName << " image.dd\n\n";
@@ -107,6 +111,8 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			if (i + 1 < argc && argv[i + 1][0] != '-') {
 				args.httpPort = std::stoi(argv[++i]);
 			}
+		} else if (arg == "--android-analyze") {
+			args.androidAnalyze = true;
 		} else if (arg[0] != '-') {
 			// Assume it's image path if no leading dash
 			args.imagePath = arg;
@@ -327,6 +333,22 @@ int main(int argc, char* argv[]) {
 			}
 			std::cout << "✓ File database created: " << fileDbPath << std::endl;
 			std::cout << std::endl;
+
+			// Step 4: Analyze Android data if requested
+			if (cmdArgs.androidAnalyze) {
+				std::cout << "[4/4] Analyzing Android application data..." << std::endl;
+				auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
+				auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
+
+				if (!androidAnalyzer->initialize()) {
+					std::cerr << "Error: Failed to initialize Android analyzer" << std::endl;
+					return 1;
+				}
+
+				androidAnalyzer->analyzeAndroidData();
+				std::cout << "✓ Android data analysis completed" << std::endl;
+				std::cout << std::endl;
+			}
 
 			// Summary
 			std::cout << "=== Analysis Complete ===" << std::endl;

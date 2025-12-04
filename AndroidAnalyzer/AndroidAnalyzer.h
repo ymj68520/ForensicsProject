@@ -35,53 +35,39 @@
 #include <algorithm>
 #include <functional>
 #include <numeric>
+
+#include <sqlite3.h>
 #include <filesystem>
-#include "../sqlite3/sqlite3.h"
+#include <tsk/libtsk.h>
+#include "../DatabaseManager/DatabaseManager.h"
+#include "../DatabaseManager/FileExtractor/FileExtractor.h"
 
-namespace fs = std::filesystem;
-
-struct AppData {
+struct AndroidAppData {
     std::string packageName;
-    std::string installPath;
-    std::vector<std::string> dbFiles;
-};
-
-struct ChatMessage {
-    std::string sender;
-    std::string receiver;
-    std::string content;
-    std::string timestamp;
-    std::string appName;
-};
-
-struct ApkSignatureInfo {
-    std::string apkPath;
-    bool hasSignature;
-    std::string signerName; // Simplified for this example
-    std::string certificateFingerprint;
+    std::string dbPath;
+    std::string dataType; // e.g., "SMS", "Contacts", "CallLog"
+    std::vector<std::map<std::string, std::string>> records;
 };
 
 class AndroidAnalyzer {
 public:
-    AndroidAnalyzer();
+    AndroidAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
     ~AndroidAnalyzer();
 
-    // Main entry point to analyze a directory (mounted image or extracted backup)
-    void analyze(const std::string& rootPath);
-
-    // Specific analyzers
-    std::vector<ChatMessage> parseWhatsApp(const std::string& dbPath);
-    std::vector<ChatMessage> parseWeChat(const std::string& dbPath);
-    
-    // APK Analysis
-    ApkSignatureInfo analyzeApk(const std::string& apkPath);
+    bool initialize();
+    void analyzeAndroidData();
+    void parseSMS(const std::string& dbPath);
+    void parseContacts(const std::string& dbPath);
+    void parseCallLog(const std::string& dbPath);
+    void parseWhatsApp(const std::string& dbPath);
+    void parseGenericAppData(const std::string& packageName, const std::string& dbPath);
 
 private:
-    void scanUserData(const std::string& dataPath);
-    void processAppDirectory(const std::string& appPath);
-    bool isSQLiteDatabase(const std::string& filePath);
-    
-    // Helper to execute SQL query
-    std::vector<std::map<std::string, std::string>> executeQuery(const std::string& dbPath, const std::string& query);
-};
+    std::string imagePath_;
+    DatabaseManager* dbManager_;
+    std::unique_ptr<FileExtractor> fileExtractor_;
+    std::vector<AndroidAppData> appDataList_;
 
+    bool extractAndParseDB(const std::string& dbPathInImage, const std::string& tempPath);
+    void insertParsedData(const AndroidAppData& data);
+};

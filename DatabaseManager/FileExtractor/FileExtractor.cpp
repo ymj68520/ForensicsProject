@@ -366,6 +366,16 @@ bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputP
     return extractFile(files[0], outputPath);
 }
 
+bool FileExtractor::extractFileByPath(const std::string& filePath, const std::string& outputPath) {
+    auto files = searchFiles("path='" + filePath + "'");
+    if (files.empty()) {
+        std::cerr << "Error: File with path " << filePath << " not found" << std::endl;
+        return false;
+    }
+
+    return extractFile(files[0], outputPath);
+}
+
 bool FileExtractor::extractFile(const FileRecord& record, const std::string& outputPath) {
     // Skip directories
     if (record.type == "DIR") {
