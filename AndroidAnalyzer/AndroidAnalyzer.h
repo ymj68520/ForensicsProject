@@ -35,6 +35,55 @@
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <filesystem>
+#include "../sqlite3/sqlite3.h"
+
+namespace fs = std::filesystem;
+
+struct AppData {
+    std::string packageName;
+    std::string installPath;
+    std::vector<std::string> dbFiles;
+};
+
+struct ChatMessage {
+    std::string sender;
+    std::string receiver;
+    std::string content;
+    std::string timestamp;
+    std::string appName;
+};
+
+struct ApkSignatureInfo {
+    std::string apkPath;
+    bool hasSignature;
+    std::string signerName; // Simplified for this example
+    std::string certificateFingerprint;
+};
+
+class AndroidAnalyzer {
+public:
+    AndroidAnalyzer();
+    ~AndroidAnalyzer();
+
+    // Main entry point to analyze a directory (mounted image or extracted backup)
+    void analyze(const std::string& rootPath);
+
+    // Specific analyzers
+    std::vector<ChatMessage> parseWhatsApp(const std::string& dbPath);
+    std::vector<ChatMessage> parseWeChat(const std::string& dbPath);
+    
+    // APK Analysis
+    ApkSignatureInfo analyzeApk(const std::string& apkPath);
+
+private:
+    void scanUserData(const std::string& dataPath);
+    void processAppDirectory(const std::string& appPath);
+    bool isSQLiteDatabase(const std::string& filePath);
+    
+    // Helper to execute SQL query
+    std::vector<std::map<std::string, std::string>> executeQuery(const std::string& dbPath, const std::string& query);
+};
 
 #include <sqlite3.h>
 #include <filesystem>
