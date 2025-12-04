@@ -8,7 +8,10 @@
 /.claude
 /sleuthkit
 /.vscode
-/tests/
+/tests/*.img
+/tests/*.db
+/tests/mount/
+/tests/android_image_src/
 
 
 # User-specific files
