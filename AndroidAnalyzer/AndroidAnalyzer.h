@@ -36,7 +36,11 @@
 #include <functional>
 #include <numeric>
 #include <filesystem>
-#include "../sqlite3/sqlite3.h"
+#include <sqlite3.h>
+#include <tsk/libtsk.h>
+
+#include "../DatabaseManager/DatabaseManager.h"
+#include "../DatabaseManager/FileExtractor/FileExtractor.h"
 
 namespace fs = std::filesystem;
 
@@ -61,13 +65,75 @@ struct ApkSignatureInfo {
     std::string certificateFingerprint;
 };
 
+struct SystemAppInfo {
+    std::string packageName;
+    std::string apkPath;
+    std::string versionName;
+    std::string versionCode;
+    ApkSignatureInfo signatureInfo;
+    bool isSystemApp;
+    bool isPrivileged;
+};
+
+struct AndroidAppData {
+    std::string packageName;
+    std::string dbPath;
+    std::string dataType; // e.g., "SMS", "Contacts", "CallLog"
+    std::vector<std::map<std::string, std::string>> records;
+};
+
+struct SystemBuildProperty {
+    std::string key;
+    std::string value;
+};
+
+struct SystemAppRecord {
+    std::string packageName;
+    std::string apkPath;
+    std::string versionName;
+    std::string versionCode;
+    bool isSystemApp;
+    bool isPrivileged;
+};
+
+struct FrameworkFileRecord {
+    std::string fileName;
+    std::string filePath;
+    std::string fileType; // jar, dex, so, etc.
+    int64_t fileSize;
+};
+
+class SystemAnalysisDatabase {
+public:
+    explicit SystemAnalysisDatabase(const std::string& dbPath);
+    ~SystemAnalysisDatabase();
+
+    bool initialize();
+    bool insertBuildProperty(const SystemBuildProperty& prop);
+    bool insertSystemApp(const SystemAppRecord& app);
+    bool insertFrameworkFile(const FrameworkFileRecord& file);
+
+private:
+    std::string dbPath_;
+    sqlite3* db_;
+
+    bool createTables();
+    bool executeSQL(const std::string& sql);
+};
+
 class AndroidAnalyzer {
 public:
     AndroidAnalyzer();
+    AndroidAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
     ~AndroidAnalyzer();
 
     // Main entry point to analyze a directory (mounted image or extracted backup)
     void analyze(const std::string& rootPath);
+
+    // Android specific analysis
+    bool initialize();
+    void analyzeAndroidData();
+    void analyzeSystemDirectory(const std::string& systemPath);
 
     // Specific analyzers
     std::vector<ChatMessage> parseWhatsApp(const std::string& dbPath);
@@ -83,40 +149,26 @@ private:
     
     // Helper to execute SQL query
     std::vector<std::map<std::string, std::string>> executeQuery(const std::string& dbPath, const std::string& query);
-};
 
-#include <sqlite3.h>
-#include <filesystem>
-#include <tsk/libtsk.h>
-#include "../DatabaseManager/DatabaseManager.h"
-#include "../DatabaseManager/FileExtractor/FileExtractor.h"
-
-struct AndroidAppData {
-    std::string packageName;
-    std::string dbPath;
-    std::string dataType; // e.g., "SMS", "Contacts", "CallLog"
-    std::vector<std::map<std::string, std::string>> records;
-};
-
-class AndroidAnalyzer {
-public:
-    AndroidAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
-    ~AndroidAnalyzer();
-
-    bool initialize();
-    void analyzeAndroidData();
+    // Android data parsing methods
+    bool extractAndParseDB(const std::string& dbPathInImage, const std::string& tempPath);
     void parseSMS(const std::string& dbPath);
     void parseContacts(const std::string& dbPath);
     void parseCallLog(const std::string& dbPath);
-    void parseWhatsApp(const std::string& dbPath);
     void parseGenericAppData(const std::string& packageName, const std::string& dbPath);
+    void insertParsedData(const AndroidAppData& data);
 
-private:
+    // System analysis methods
+    void scanSystemApps(const std::string& appDirPath);
+    SystemAppInfo analyzeSystemApk(const std::string& apkPath, bool isPrivileged);
+    void analyzeBuildProperties(const std::string& buildPropPath);
+    void scanFrameworkDirectory(const std::string& frameworkPath);
+    void extractAndScanSystemApps(const std::string& imageAppDir, const std::string& tempAppDir);
+    void extractAndScanFramework(const std::string& imageFrameworkDir, const std::string& tempFrameworkDir);
+
+    // Private members
     std::string imagePath_;
     DatabaseManager* dbManager_;
     std::unique_ptr<FileExtractor> fileExtractor_;
-    std::vector<AndroidAppData> appDataList_;
-
-    bool extractAndParseDB(const std::string& dbPathInImage, const std::string& tempPath);
-    void insertParsedData(const AndroidAppData& data);
+    std::unique_ptr<SystemAnalysisDatabase> systemDb_;
 };
