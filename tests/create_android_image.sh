@@ -5,16 +5,87 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TESTS_DIR="$ROOT_DIR/tests"
 IMAGE="$TESTS_DIR/android_test_gen.img"
 SMS_DB="$TESTS_DIR/mmssms_test.db"
+CONTACTS_DB="$TESTS_DIR/contacts2_test.db"
+CALLLOG_DB="$TESTS_DIR/calllog_test.db"
 WA_DB="$TESTS_DIR/msgstore_test.db"
+TG_DB="$TESTS_DIR/cache4_test.db"
+WC_DB="$TESTS_DIR/EnMicroMsg_test.db"
+CHROME_DB="$TESTS_DIR/chrome_history_test.db"
+WIFI_CONFIG="$TESTS_DIR/WifiConfigStore.xml"
+PACKAGES_XML="$TESTS_DIR/packages.xml"
+USAGE_STATS_FILE="$TESTS_DIR/usage_stats_1001"
 ASSETS_DIR="$TESTS_DIR/test_assets"
 SYSTEM_ASSETS_DIR="$TESTS_DIR/system_assets"
 
-echo "Creating sample Android SQLite databases (SMS, WhatsApp)..."
+echo "Creating sample Android SQLite databases (SMS, Contacts, CallLog, WhatsApp, Chrome, Telegram, WeChat)..."
 command -v sqlite3 >/dev/null 2>&1 || { echo "sqlite3 not found. Please install sqlite3."; exit 1; }
 
-rm -f "$SMS_DB" "$WA_DB"
+rm -f "$SMS_DB" "$CONTACTS_DB" "$CALLLOG_DB" "$WA_DB" "$CHROME_DB" "$TG_DB" "$WC_DB"
+
+# SMS DB
 sqlite3 "$SMS_DB" "CREATE TABLE sms (_id INTEGER PRIMARY KEY, address TEXT, body TEXT, date INTEGER, type INTEGER); INSERT INTO sms (_id, address, body, date, type) VALUES (1, '+1111111111', 'Test SMS message', 1609459200000, 1);"
+
+# Contacts DB
+sqlite3 "$CONTACTS_DB" "CREATE TABLE raw_contacts (_id INTEGER PRIMARY KEY, display_name TEXT); CREATE TABLE data (_id INTEGER PRIMARY KEY, raw_contact_id INTEGER, mimetype_id INTEGER, data1 TEXT); CREATE TABLE mimetypes (_id INTEGER PRIMARY KEY, mimetype TEXT);"
+sqlite3 "$CONTACTS_DB" "INSERT INTO mimetypes (_id, mimetype) VALUES (1, 'vnd.android.cursor.item/phone_v2');"
+sqlite3 "$CONTACTS_DB" "INSERT INTO raw_contacts (_id, display_name) VALUES (1, 'John Doe');"
+sqlite3 "$CONTACTS_DB" "INSERT INTO data (raw_contact_id, mimetype_id, data1) VALUES (1, 1, '+1234567890');"
+
+# CallLog DB
+sqlite3 "$CALLLOG_DB" "CREATE TABLE calls (_id INTEGER PRIMARY KEY, number TEXT, date INTEGER, duration INTEGER, type INTEGER); INSERT INTO calls (_id, number, date, duration, type) VALUES (1, '+9876543210', 1609462800000, 60, 1);"
+
+# WhatsApp DB
 sqlite3 "$WA_DB" "CREATE TABLE messages (_id INTEGER PRIMARY KEY, key_remote_jid TEXT, data TEXT, timestamp INTEGER); INSERT INTO messages (_id, key_remote_jid, data, timestamp) VALUES (1, '12345-67890@g.us', 'Hello from WhatsApp', 1609459201000);"
+
+# Telegram DB (Simplified Simulation)
+sqlite3 "$TG_DB" "CREATE TABLE messages (_id INTEGER PRIMARY KEY, uid INTEGER, data TEXT, date INTEGER); INSERT INTO messages (_id, uid, data, date) VALUES (1, 1001, 'Hello from Telegram', 1609459202000);"
+
+# WeChat DB (Simplified Simulation - normally encrypted)
+sqlite3 "$WC_DB" "CREATE TABLE message (msgId INTEGER PRIMARY KEY, content TEXT, createTime INTEGER, talker TEXT); INSERT INTO message (msgId, content, createTime, talker) VALUES (1, 'Hello from WeChat', 1609459203000, 'wxid_123456');"
+
+# Chrome History DB
+sqlite3 "$CHROME_DB" "CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER, last_visit_time INTEGER); INSERT INTO urls (url, title, visit_count, last_visit_time) VALUES ('https://www.google.com', 'Google', 10, 13254000000000000);"
+
+echo "Creating XML artifacts..."
+# Wifi Config
+cat > "$WIFI_CONFIG" <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<WifiConfigStoreData>
+<NetworkList>
+<Network>
+<WifiConfiguration>
+<string name="SSID">&quot;MyTestWifi&quot;</string>
+<string name="PreSharedKey">&quot;secretpassword&quot;</string>
+<string name="KeyMgmt">WPA_PSK</string>
+</WifiConfiguration>
+</Network>
+</NetworkList>
+</WifiConfigStoreData>
+XML
+
+# Packages XML
+cat > "$PACKAGES_XML" <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<packages>
+<package name="com.example.app" codePath="/data/app/com.example.app-1" nativeLibraryPath="/data/app/com.example.app-1/lib" publicFlags="0" privateFlags="0" ft="1609459200000" it="1609459200000" ut="1609459200000" version="1" userId="10000" installer="com.android.vending">
+<sigs count="1">
+<cert index="0" />
+</sigs>
+</package>
+</packages>
+XML
+
+# Usage Stats XML
+cat > "$USAGE_STATS_FILE" <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<usagestats version="1" endTime="1609459200000">
+    <packages>
+        <package name="com.whatsapp" timeActive="5000" lastTimeActive="1609459100000" />
+        <package name="com.android.chrome" timeActive="120000" lastTimeActive="1609459000000" />
+        <package name="com.example.app" timeActive="300" lastTimeActive="1609458000000" />
+    </packages>
+</usagestats>
+XML
 
 echo "Creating ext4 image file: $IMAGE (128MB)"
 rm -f "$IMAGE"
@@ -170,9 +241,41 @@ mkdir /data/data
 mkdir /data/data/com.android.providers.telephony
 mkdir /data/data/com.android.providers.telephony/databases
 write "$SMS_DB" /data/data/com.android.providers.telephony/databases/mmssms.db
+mkdir /data/data/com.android.providers.contacts
+mkdir /data/data/com.android.providers.contacts/databases
+write "$CONTACTS_DB" /data/data/com.android.providers.contacts/databases/contacts2.db
+write "$CALLLOG_DB" /data/data/com.android.providers.contacts/databases/calllog.db
 mkdir /data/data/com.whatsapp
 mkdir /data/data/com.whatsapp/databases
 write "$WA_DB" /data/data/com.whatsapp/databases/msgstore.db
+
+mkdir /data/data/org.telegram.messenger
+mkdir /data/data/org.telegram.messenger/files
+write "$TG_DB" /data/data/org.telegram.messenger/files/cache4.db
+
+mkdir /data/data/com.tencent.mm
+mkdir /data/data/com.tencent.mm/MicroMsg
+mkdir /data/data/com.tencent.mm/MicroMsg/testuser
+write "$WC_DB" /data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db
+
+mkdir /data/data/com.android.chrome
+mkdir /data/data/com.android.chrome/app_chrome
+mkdir /data/data/com.android.chrome/app_chrome/Default
+write "$CHROME_DB" /data/data/com.android.chrome/app_chrome/Default/History
+
+# Wifi Config
+mkdir /data/misc
+mkdir /data/misc/wifi
+write "$WIFI_CONFIG" /data/misc/wifi/WifiConfigStore.xml
+
+# Packages XML
+mkdir /data/system
+write "$PACKAGES_XML" /data/system/packages.xml
+
+# Usage Stats
+mkdir /data/system/usagestats
+mkdir /data/system/usagestats/daily
+write "$USAGE_STATS_FILE" /data/system/usagestats/daily/1001
 
 # create typical sdcard and app paths
 mkdir /sdcard
@@ -233,8 +336,31 @@ else
         # create dirs and copy
         mkdir -p /mnt/android_img/data/data/com.android.providers.telephony/databases
         cp "$SMS_DB" /mnt/android_img/data/data/com.android.providers.telephony/databases/mmssms.db
+        
+        mkdir -p /mnt/android_img/data/data/com.android.providers.contacts/databases
+        cp "$CONTACTS_DB" /mnt/android_img/data/data/com.android.providers.contacts/databases/contacts2.db
+        cp "$CALLLOG_DB" /mnt/android_img/data/data/com.android.providers.contacts/databases/calllog.db
+        
         mkdir -p /mnt/android_img/data/data/com.whatsapp/databases
         cp "$WA_DB" /mnt/android_img/data/data/com.whatsapp/databases/msgstore.db
+        
+        mkdir -p /mnt/android_img/data/data/org.telegram.messenger/files
+        cp "$TG_DB" /mnt/android_img/data/data/org.telegram.messenger/files/cache4.db
+        
+        mkdir -p /mnt/android_img/data/data/com.tencent.mm/MicroMsg/testuser
+        cp "$WC_DB" /mnt/android_img/data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db
+        
+        mkdir -p /mnt/android_img/data/data/com.android.chrome/app_chrome/Default
+        cp "$CHROME_DB" /mnt/android_img/data/data/com.android.chrome/app_chrome/Default/History
+        
+        mkdir -p /mnt/android_img/data/misc/wifi
+        cp "$WIFI_CONFIG" /mnt/android_img/data/misc/wifi/WifiConfigStore.xml
+        
+        mkdir -p /mnt/android_img/data/system
+        cp "$PACKAGES_XML" /mnt/android_img/data/system/packages.xml
+        
+        mkdir -p /mnt/android_img/data/system/usagestats/daily
+        cp "$USAGE_STATS_FILE" /mnt/android_img/data/system/usagestats/daily/1001
 
         mkdir -p /mnt/android_img/sdcard/DCIM/Camera
         cp "$ASSETS_DIR/sample.jpg" /mnt/android_img/sdcard/DCIM/Camera/sample.jpg

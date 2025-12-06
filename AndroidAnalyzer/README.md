@@ -9,26 +9,44 @@
 
 主要文件
 - `AndroidAnalyzer.h`, `AndroidAnalyzer.cpp`
-- `SystemAnalysisDatabase` - 存储系统分析结果的专用数据库类
+- `AndroidAnalysisDatabase` - 存储Android分析结果（含系统和用户数据）的专用数据库类
 
 实现要点
 - 重点处理 `/data/data/*` 下的 SQLite 数据库和应用私有文件
 - 分析 `/system/app/` 和 `/system/priv-app/` 下的系统APK文件
 - 解析 `/system/build.prop` 配置文件
 - 扫描 `/system/framework/` 目录中的框架文件
-- 将所有分析结果存储在 `*_system_analysis.db` 数据库中
+- 将所有分析结果存储在 `*_android.db` 数据库中
 - 提供基于文件路径和已知数据库结构的解析器
 
-数据库表结构
-- `system_build_properties` - 系统构建属性 (key, value)
-- `system_apps` - 系统应用信息 (package_name, apk_path, version_info, privileges)
-- `framework_files` - 框架文件信息 (file_name, file_path, file_type, file_size)
+功能列表
+1. **用户数据分析**:
+   - SMS/MMS (`mmssms.db`)
+   - 联系人 (`contacts2.db`)
+   - 通话记录 (`calllog.db`)
+   - WhatsApp 消息 (`msgstore.db`)
+   - Chrome 浏览历史 (`History`)
+   - WiFi 配置信息 (`WifiConfigStore.xml` / `wpa_supplicant.conf`)
+   - 已安装应用列表 (`packages.xml`)
 
-测试建议
-- 使用脱敏或合规的测试备份验证解析结果字段
-- 验证数据库中的数据完整性和准确性
+2. **系统数据分析**:
+   - Build.prop 属性
+   - 系统应用 (System Apps)
+   - 框架文件 (Framework Files)
+
+数据库表结构
+- `sms_messages` - 短信记录
+- `contacts` - 联系人信息
+- `call_logs` - 通话记录
+- `whatsapp_messages` - WhatsApp 聊天记录
+- `wifi_networks` - WiFi 网络配置
+- `chrome_history` - 浏览器历史
+- `installed_packages` - 已安装应用信息
+- `system_build_properties` - 系统构建属性
+- `system_apps` - 系统应用信息
+- `framework_files` - 框架文件信息
 
 扩展点
-- 添加对常见应用（WhatsApp, WeChat 等）数据库的专用解析器
+- 添加更多第三方应用（WeChat, Telegram 等）的专用解析器
 - 支持 APK 签名与证书分析
-- 增强系统目录分析功能
+- 增强 Timeline 分析

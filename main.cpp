@@ -25,6 +25,7 @@ struct CommandLineArgs {
 	std::string extractFile;
 	std::string extractExt;
 	std::string outputDir = "extracted_files";
+	std::string dbOutputDir = "";
 	XFSMode xfsMode = XFSMode::Auto;
 	bool extractAll = false;
 	bool includeDeleted = false;
@@ -47,7 +48,8 @@ void printUsage(const char* programName) {
 	std::cout << "                                Linux: native mount (full support, requires sudo)\n";
 	std::cout << "                                Windows: pure parser (limited support)\n";
 	std::cout << "                              - native: Force Linux native mount (Linux only)\n";
-	std::cout << "                              - pure: Force pure XFS parser (cross-platform)\n\n";
+	std::cout << "                              - pure: Force pure XFS parser (cross-platform)\n";
+	std::cout << "  --db-dir <path>             Directory to store generated databases (default: current directory)\n\n";
 	std::cout << "Extraction options:\n";
 	std::cout << "  --extract-file <pattern>    Extract files by name (supports wildcards: *, ?)\n";
 	std::cout << "                              Example: --extract-file \"vmlinuz*\"\n";
@@ -94,6 +96,8 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			args.outputDir = argv[++i];
 		} else if (arg == "--include-deleted") {
 			args.includeDeleted = true;
+		} else if (arg == "--db-dir" && i + 1 < argc) {
+			args.dbOutputDir = argv[++i];
 		} else if (arg == "--xfs-mode" && i + 1 < argc) {
 			std::string mode = argv[++i];
 			if (mode == "auto") {
@@ -288,9 +292,14 @@ int main(int argc, char* argv[]) {
 
 		// Generate database names
 		std::string baseName = getBaseName(imagePath);
-		std::string rawDbPath = baseName + "_raw.db";
-		std::string eventDbPath = baseName + "_events.db";
-		std::string fileDbPath = baseName + "_files.db";
+		std::string outPrefix = "";
+		if (!cmdArgs.dbOutputDir.empty()) {
+			fs::create_directories(cmdArgs.dbOutputDir);
+			outPrefix = cmdArgs.dbOutputDir + "/";
+		}
+		std::string rawDbPath = outPrefix + baseName + "_raw.db";
+		std::string eventDbPath = outPrefix + baseName + "_events.db";
+		std::string fileDbPath = outPrefix + baseName + "_files.db";
 
 		try {
 			// Step 1: Analyze image and create raw database
@@ -339,6 +348,9 @@ int main(int argc, char* argv[]) {
 				std::cout << "[4/4] Analyzing Android application data..." << std::endl;
 				auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
 				auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
+				
+				std::string androidDbPath = outPrefix + baseName + "_android.db";
+				androidAnalyzer->setOutputDatabasePath(androidDbPath);
 
 				if (!androidAnalyzer->initialize()) {
 					std::cerr << "Error: Failed to initialize Android analyzer" << std::endl;

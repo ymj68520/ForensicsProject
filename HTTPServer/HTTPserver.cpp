@@ -48,8 +48,26 @@ namespace forensics {
         try {
             auto body = json::parse(req.body);
             std::string image_path = body["image_path"];
+            
+            bool android_analyze = false;
+            if (body.contains("android_analyze")) {
+                android_analyze = body["android_analyze"];
+            }
+
+            XFSMode xfs_mode = XFSMode::Auto;
+            if (body.contains("xfs_mode")) {
+                std::string mode_str = body["xfs_mode"];
+                if (mode_str == "native") xfs_mode = XFSMode::Native;
+                else if (mode_str == "pure") xfs_mode = XFSMode::Pure;
+            }
+
+            std::string db_output_dir = "";
+            if (body.contains("db_output_dir")) {
+                db_output_dir = body["db_output_dir"];
+            }
 
             std::string task_id = task_manager_.create_task(image_path);
+            task_manager_.start_analysis(task_id, android_analyze, xfs_mode, db_output_dir);
 
             json response = {
                 {"task_id", task_id},
