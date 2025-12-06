@@ -322,8 +322,9 @@ write "$ASSETS_DIR/large.bin" /mnt/sdcard/large.bin
 # add executable and set its mode
 write "$ASSETS_DIR/runme.sh" /data/local/tmp/runme.sh
 chmod 0755 /data/local/tmp/runme.sh
-quit
+debugfs:  quit
 EOF
+sync
     echo "Files written to $IMAGE using debugfs"
 else
     echo "debugfs not found."

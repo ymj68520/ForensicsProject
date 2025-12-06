@@ -96,6 +96,12 @@ bool AndroidAnalyzer::extractAndParseDB(const std::string& dbPathInImage, const 
         return false;
     }
 
+    try {
+        if (fs::exists(tempPath)) {
+            std::cout << "Extracted " << dbPathInImage << " (Size: " << fs::file_size(tempPath) << " bytes)" << std::endl;
+        }
+    } catch (...) {}
+
     return true;
 }
 
@@ -170,11 +176,15 @@ void AndroidAnalyzer::parseCallLog(const std::string& dbPath) {
 std::vector<ChatMessage> AndroidAnalyzer::parseWhatsApp(const std::string& dbPath) {
     std::vector<ChatMessage> messages;
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) return messages;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+        std::cerr << "Failed to open WhatsApp DB: " << sqlite3_errmsg(db) << std::endl;
+        return messages;
+    }
 
     std::string sql = "SELECT _id, key_remote_jid, data, timestamp FROM messages LIMIT 1000;";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        int count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             ChatMessage msg;
             msg.sender = "Unknown"; 
@@ -186,8 +196,12 @@ std::vector<ChatMessage> AndroidAnalyzer::parseWhatsApp(const std::string& dbPat
             msg.appName = "WhatsApp";
             messages.push_back(msg);
             androidDb_->insertWhatsAppMessage(msg);
+            count++;
         }
+        if (count == 0) std::cout << "No WhatsApp messages found in " << dbPath << std::endl;
         sqlite3_finalize(stmt);
+    } else {
+        std::cerr << "Failed to prepare WhatsApp SQL: " << sqlite3_errmsg(db) << std::endl;
     }
     sqlite3_close(db);
     return messages;
@@ -196,13 +210,17 @@ std::vector<ChatMessage> AndroidAnalyzer::parseWhatsApp(const std::string& dbPat
 std::vector<ChatMessage> AndroidAnalyzer::parseTelegram(const std::string& dbPath) {
     std::vector<ChatMessage> messages;
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) return messages;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+        std::cerr << "Failed to open Telegram DB: " << sqlite3_errmsg(db) << std::endl;
+        return messages;
+    }
 
     // Simulation: Telegram schema varies, using a simplified query for cache4.db or similar
     // Assuming table 'messages' with fields _id, uid, data, date
     std::string sql = "SELECT _id, uid, data, date FROM messages LIMIT 1000;";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        int count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             ChatMessage msg;
             const char* sender = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
@@ -214,8 +232,12 @@ std::vector<ChatMessage> AndroidAnalyzer::parseTelegram(const std::string& dbPat
             msg.appName = "Telegram";
             messages.push_back(msg);
             androidDb_->insertTelegramMessage(msg);
+            count++;
         }
+        if (count == 0) std::cout << "No Telegram messages found in " << dbPath << std::endl;
         sqlite3_finalize(stmt);
+    } else {
+        std::cerr << "Failed to prepare Telegram SQL: " << sqlite3_errmsg(db) << std::endl;
     }
     sqlite3_close(db);
     return messages;
@@ -224,13 +246,17 @@ std::vector<ChatMessage> AndroidAnalyzer::parseTelegram(const std::string& dbPat
 std::vector<ChatMessage> AndroidAnalyzer::parseWeChat(const std::string& dbPath) {
     std::vector<ChatMessage> messages;
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) return messages;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+        std::cerr << "Failed to open WeChat DB: " << sqlite3_errmsg(db) << std::endl;
+        return messages;
+    }
 
     // Simulation: WeChat EnMicroMsg.db is typically encrypted SQLCipher.
     // Assuming we are dealing with a decrypted DB or a simulation with 'message' table.
     std::string sql = "SELECT msgId, content, createTime, talker FROM message LIMIT 1000;";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        int count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             ChatMessage msg;
             const char* sender = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
@@ -242,8 +268,12 @@ std::vector<ChatMessage> AndroidAnalyzer::parseWeChat(const std::string& dbPath)
             msg.appName = "WeChat";
             messages.push_back(msg);
             androidDb_->insertWeChatMessage(msg);
+            count++;
         }
+        if (count == 0) std::cout << "No WeChat messages found in " << dbPath << std::endl;
         sqlite3_finalize(stmt);
+    } else {
+        std::cerr << "Failed to prepare WeChat SQL: " << sqlite3_errmsg(db) << std::endl;
     }
     sqlite3_close(db);
     return messages;
@@ -251,11 +281,15 @@ std::vector<ChatMessage> AndroidAnalyzer::parseWeChat(const std::string& dbPath)
 
 void AndroidAnalyzer::parseChromeHistory(const std::string& dbPath) {
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) return;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+        std::cerr << "Failed to open Chrome DB: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
 
     std::string sql = "SELECT url, title, visit_count, last_visit_time FROM urls;";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        int count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             ChromeHistoryItem item;
             const char* url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
@@ -265,8 +299,12 @@ void AndroidAnalyzer::parseChromeHistory(const std::string& dbPath) {
             item.visitCount = sqlite3_column_int64(stmt, 2);
             item.lastVisitTime = sqlite3_column_int64(stmt, 3);
             androidDb_->insertChromeHistory(item);
+            count++;
         }
+        if (count == 0) std::cout << "No Chrome history items found in " << dbPath << std::endl;
         sqlite3_finalize(stmt);
+    } else {
+        std::cerr << "Failed to prepare Chrome SQL: " << sqlite3_errmsg(db) << std::endl;
     }
     sqlite3_close(db);
 }
