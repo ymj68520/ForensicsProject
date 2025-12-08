@@ -1,6 +1,6 @@
 #include "adbExtractor.h"
 
-int adbtest(){
+int adbTest(){
     std::cout << "=== Android目录提取工具 (使用ADB协议) ===" << std::endl;
 
     AndroidDirectoryExtractor extractor("./extracted_android_data");

@@ -382,3 +382,4 @@ FodyWeavers.xsd
 tests/usage_stats_1001
 tests/WifiConfigStore.xml
 tests/packages.xml
+AndroidAdbExtractor/adbTest

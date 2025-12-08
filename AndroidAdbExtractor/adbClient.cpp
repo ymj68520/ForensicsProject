@@ -11,8 +11,8 @@ void ADBClient::initSocket()
 void ADBClient::cleanupSocket()
 {
 #ifdef _WIN32
-    closesocket(sock)
-        WSACleanupp();
+    closesocket(sock);
+    WSACleanup();
 #else
     close(sock);
 #endif
@@ -97,6 +97,7 @@ bool ADBClient::disconnect()
         cleanupSocket();
         connected = false;
     }
+    return true;
 }
 
 std::vector<std::string> ADBClient::getDevices()
