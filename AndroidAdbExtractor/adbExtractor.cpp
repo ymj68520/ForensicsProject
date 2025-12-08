@@ -1,98 +1,142 @@
 #include "adbExtractor.h"
+#include <cstdint>
+#include <ctime>
+#include <thread>
+#include <chrono>
+#include <iostream>
+#include <vector>
+#include <fstream> 
+#include <cerrno>   // For errno
+#include <cstring>  // For strerror
 
 void AndroidDirectoryExtractor::createDirectory(const std::string &path){
+    std::string temp = path;
     size_t pos = 0;
-    while((pos=path.find_first_of("/\\", pos)) != std::string::npos){
-        std::string dir = path.substr(0, pos++);
-        if(!dir.empty()){
-            mkdir_cross(dir.c_str());
-
+    while(true){
+        pos = temp.find_first_of("/\\", pos);
+        if(pos == std::string::npos){
+            if (mkdir_cross(temp.c_str()) != 0 && errno != EEXIST) {
+                std::cerr << "Failed to create directory: " << temp << " Error: " << strerror(errno) << std::endl;
+            }
+            break;
         }
-        mkdir_cross(path.c_str());
+        std::string dir = temp.substr(0, pos);
+        if(!dir.empty()){
+            if (mkdir_cross(dir.c_str()) != 0 && errno != EEXIST) {
+                std::cerr << "Failed to create directory: " << dir << " Error: " << strerror(errno) << std::endl;
+            }
+        }
+        pos++;
     }
 }
 
 bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_path, const std::string& local_base) {
-        // 检查是否为目录
-        std::string check = adb.executeShell("[ -d " + remote_path + " ] && echo DIR || echo FILE");
+    uint32_t mode = 0, size = 0, time = 0; // Declared here
+    if (!adb.statFile(remote_path, mode, size, time)) {
+        // stat failed. This might be permission denied or file not found.
+        std::cerr << "Failed to stat: " << remote_path << std::endl;
+        return false;
+    }
+    
+    // Check for Directory (S_IFDIR = 0x4000)
+    if ((mode & 0xF000) == 0x4000) {
+        createDirectory(local_base);
+        std::vector<ADBClient::SyncEntry> files = adb.listDirectory(remote_path);
         
-        if (check.find("DIR") != std::string::npos) {
-            // 是目录，递归提取
-            std::vector<std::string> files = adb.listDirectory(remote_path);
+        for (const auto& entry : files) {
+            if (entry.name == "." || entry.name == "..") continue;
             
-            for (const auto& file : files) {
-                if (file == "." || file == "..") continue;
-                
-                std::string remote_full = remote_path + "/" + file;
-                std::string local_full = local_base + "/" + file;
-                
-                extractFileRecursive(remote_full, local_full);
+            std::string remote_full = remote_path + "/" + entry.name;
+            std::string local_full = local_base + "/" + entry.name;
+            
+            extractFileRecursive(remote_full, local_full);
+        }
+        return true;
+    } 
+    // Check for Regular File (S_IFREG = 0x8000)
+    else if ((mode & 0xF000) == 0x8000) {
+            std::string parent = local_base.substr(0, local_base.find_last_of("/\\"));
+            createDirectory(parent);
+
+            // Resume download / fault tolerance part:
+            // Check if local file exists and is complete
+            std::ifstream local_file(local_base, std::ios::binary | std::ios::ate);
+            if (local_file.is_open()) {
+                uint64_t local_size = local_file.tellg();
+                if (local_size == size) { // 'size' is remote file size
+                    std::cout << "Skipping: " << remote_path << " (already complete)" << std::endl;
+                    return true; // Already downloaded
+                }
+                // If local_size < size, it will re-download the whole file.
+                // If local_size > size, something is wrong, proceed with download.
             }
-            return true;
-        } else {
-            // 是文件，直接下载
-            createDirectory(local_base.substr(0, local_base.find_last_of("/\\")));
-            return adb.receiveFile(remote_path, local_base);
-        }
+            // Close to allow receiveFile to open for writing. If not opened, it's fine.
+            local_file.close(); 
+            
+            return adb.receiveFile(remote_path, local_base, size); // Pass remote file size
+    }
+    
+    return true;
+}
+
+bool AndroidDirectoryExtractor::initialize() {
+    if (!adb.connect()) return false;
+
+    auto devices = adb.getDevices();
+    adb.disconnect(); 
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    if (devices.empty()) {
+        std::cerr << "No device found" << std::endl;
+        return false;
     }
 
-    bool AndroidDirectoryExtractor::initialize() {
-        if (!adb.connect()) return false;
+    std::cout << "Found " << devices.size() << " device(s)" << std::endl;
+    std::cout << "  Using device: " << devices[0] << std::endl;
 
-        auto devices = adb.getDevices();
-        if (devices.empty()) {
-            std::cerr << "✗ 未找到设备" << std::endl;
+    if (!adb.connect()) return false;
+    if (!adb.selectDevice(devices[0])) return false;
+    
+    if (!adb.syncConnect()) {
+            std::cerr << "Failed to establish sync connection" << std::endl;
             return false;
-        }
+    }
+    
+    return true;
+}
 
-        std::cout << "✓ 找到 " << devices.size() << " 个设备" << std::endl;
-        std::cout << "  使用设备: " << devices[0] << std::endl;
+bool AndroidDirectoryExtractor::extractDirectory(const std::string& device_path) {
+    std::cout << "\nStarting extraction: " << device_path << std::endl;
 
-        return adb.selectDevice(devices[0]);
+    // Permission check removed as it requires Shell protocol which would break Sync connection.
+    // Sync protocol will simply fail to STAT if permission is denied.
+
+    // Prepare local path
+    std::string clean_path = device_path;
+    if (clean_path[0] == '/') clean_path = clean_path.substr(1);
+    std::string local_path = output_dir + "/" + clean_path;
+
+    // Recursive extraction
+    bool success = extractFileRecursive(device_path, local_path);
+    
+    if (success) {
+        std::cout << "Extraction successful: " << local_path << std::endl;
+    } else {
+        std::cerr << "Extraction failed (Check permissions)" << std::endl;
     }
 
-    bool AndroidDirectoryExtractor::extractDirectory(const std::string& device_path) {
-        std::cout << "\n开始提取: " << device_path << std::endl;
+    return success;
+}
 
-        // 检查权限
-        std::string check = adb.executeShell("ls -la " + device_path + " 2>&1");
-        if (check.find("Permission denied") != std::string::npos) {
-            std::cerr << "✗ 权限不足，需要root权限" << std::endl;
-            return false;
-        }
-
-        // 准备本地路径
-        std::string clean_path = device_path;
-        if (clean_path[0] == '/') clean_path = clean_path.substr(1);
-        std::string local_path = output_dir + "/" + clean_path;
-
-        // 建立sync连接
-        if (!adb.syncConnect()) {
-            std::cerr << "✗ 无法建立同步连接" << std::endl;
-            return false;
-        }
-
-        // 递归提取
-        bool success = extractFileRecursive(device_path, local_path);
-        
-        if (success) {
-            std::cout << "✓ 提取成功: " << local_path << std::endl;
-        } else {
-            std::cerr << "✗ 提取失败" << std::endl;
-        }
-
-        return success;
+void AndroidDirectoryExtractor::extractMultiple(const std::vector<std::string>& paths) {
+    int success = 0, failed = 0;
+    
+    for (const auto& path : paths) {
+        if (extractDirectory(path)) success++;
+        else failed++;
     }
 
-    void AndroidDirectoryExtractor::extractMultiple(const std::vector<std::string>& paths) {
-        int success = 0, failed = 0;
-        
-        for (const auto& path : paths) {
-            if (extractDirectory(path)) success++;
-            else failed++;
-        }
-
-        std::cout << "\n=== 完成 ===" << std::endl;
-        std::cout << "成功: " << success << " | 失败: " << failed << std::endl;
-    }
-
+    std::cout << "\n=== Completed ===" << std::endl;
+    std::cout << "Successful: " << success << " | Failed: " << failed << std::endl;
+}

@@ -1,17 +1,24 @@
 #include "adbExtractor.h"
+#include <iostream>
+#include <vector>
 
 int adbTest(){
-    std::cout << "=== Android目录提取工具 (使用ADB协议) ===" << std::endl;
+    std::cout << "=== Android Directory Extractor (using ADB protocol) ===" << std::endl;
 
     AndroidDirectoryExtractor extractor("./extracted_android_data");
 
     if (!extractor.initialize()) {
-        std::cerr << "初始化失败" << std::endl;
+        std::cerr << "Initialization failed" << std::endl;
         return 1;
     }
 
-    std::vector<std::string> dirs = {"/data", "/system"};
-    extractor.extractMultiple(dirs);
+    // std::vector<std::string> dirs = {"/data", "/system"};
+    // extractor.extractMultiple(dirs);
+
+    // Test with a specific file that should exist on an unrooted device
+    std::vector<std::string> test_files = {"/sdcard/test_file.txt"}; 
+    std::cout << "\nAttempting to extract: " << test_files[0] << std::endl;
+    extractor.extractMultiple(test_files);
 
     return 0;
 }
