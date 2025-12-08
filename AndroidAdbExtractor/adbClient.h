@@ -90,6 +90,16 @@ public:
 
     // 获取文件信息 (Sync mode)
     bool statFile(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time);
+
+    // 检查是否有root权限
+    bool checkRootAccess();
+
+    // 尝试获取root权限
+    bool acquireRoot();
+
+    // 使用root权限执行命令
+    std::string executeShellAsRoot(const std::string& command);
+    
 };
 
 #endif // ADB_CLIENT_H

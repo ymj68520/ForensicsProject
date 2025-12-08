@@ -16,6 +16,8 @@ class AndroidDirectoryExtractor{
     private:
     ADBClient adb;
     std::string output_dir;
+    bool has_root;
+    bool use_root_for_extraction;
 
     void createDirectory(const std::string &path);
     bool extractFileRecursive(const std::string& remote_path, const std::string& local_base);
@@ -25,7 +27,7 @@ class AndroidDirectoryExtractor{
         createDirectory(output_dir);
     }
 
-    bool initialize();
+    bool initialize(bool auto_root = true);
     bool extractDirectory(const std::string& device_path);
     void extractMultiple(const std::vector<std::string>& paths);
 };

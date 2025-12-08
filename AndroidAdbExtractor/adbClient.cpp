@@ -9,7 +9,8 @@ void ADBClient::initSocket()
 
 void ADBClient::cleanupSocket()
 {
-    if (sock != -1) {
+    if (sock != -1)
+    {
 #ifdef _WIN32
         closesocket(sock);
 #else
@@ -56,7 +57,8 @@ bool ADBClient::receiveExact(char *buffer, int length)
     while (total < length)
     {
         int received = recv(sock, buffer + total, length - total, 0);
-        if (received <= 0) {
+        if (received <= 0)
+        {
             return false;
         }
         total += received;
@@ -77,19 +79,24 @@ bool ADBClient::receiveADBStatus()
     char status[5] = {0};
     if (!receiveExact(status, 4))
         return false;
-    
+
     std::string s(status);
-    if (s == "OKAY") return true;
-    
-    if (s == "FAIL") {
+    if (s == "OKAY")
+        return true;
+
+    if (s == "FAIL")
+    {
         char len_buf[5] = {0};
-        if (receiveExact(len_buf, 4)) {
+        if (receiveExact(len_buf, 4))
+        {
             unsigned int length = strtoul(len_buf, nullptr, 16);
             std::string error = receiveData(length);
             std::cerr << "ADB Error: " << error << std::endl;
         }
-    } else {
-         std::cerr << "ADB Unknown Status: " << s << std::endl;
+    }
+    else
+    {
+        std::cerr << "ADB Unknown Status: " << s << std::endl;
     }
     return false;
 }
@@ -274,7 +281,7 @@ bool ADBClient::receiveFile(const std::string &remote_path, const std::string &l
         std::cerr << "Failed to open local file for writing: " << local_path << std::endl;
         return false;
     }
-    
+
     uint64_t total_received_bytes = 0; // Use uint64_t for large files
 
     while (true)
@@ -307,93 +314,203 @@ bool ADBClient::receiveFile(const std::string &remote_path, const std::string &l
             outfile.write(data.data(), chunk_size);
             total_received_bytes += chunk_size;
 
-            if (total_file_size > 0) {
+            if (total_file_size > 0)
+            {
                 int progress = (total_received_bytes * 100) / total_file_size;
-                std::cout << "\rReceiving: " << remote_path << " - " << progress << "% (" 
+                std::cout << "\rReceiving: " << remote_path << " - " << progress << "% ("
                           << total_received_bytes << "/" << total_file_size << " bytes)";
                 std::cout.flush();
             }
         }
     }
     outfile.close();
-    
-    if (total_file_size > 0) {
+
+    if (total_file_size > 0)
+    {
         std::cout << std::endl; // New line after progress bar
     }
     return true;
 }
 
-bool ADBClient::statFile(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time) {
+bool ADBClient::statFile(const std::string &remote_path, uint32_t &mode, uint32_t &size, uint32_t &time)
+{
     char len_buf[4];
     uint32_t len = remote_path.length();
     len_buf[0] = (len >> 0) & 0xFF;
     len_buf[1] = (len >> 8) & 0xFF;
     len_buf[2] = (len >> 16) & 0xFF;
     len_buf[3] = (len >> 24) & 0xFF;
-    
+
     std::string msg = "STAT" + std::string(len_buf, 4) + remote_path;
 
-    if (!sendData(msg)) return false;
+    if (!sendData(msg))
+        return false;
 
     char header[4];
-    if (!receiveExact(header, 4)) return false;
-    if (std::string(header, 4) != "STAT") return false;
+    if (!receiveExact(header, 4))
+        return false;
+    if (std::string(header, 4) != "STAT")
+        return false;
 
     char stat_data[12];
-    if (!receiveExact(stat_data, 12)) return false;
+    if (!receiveExact(stat_data, 12))
+        return false;
 
-    mode = *(uint32_t*)(stat_data);
-    size = *(uint32_t*)(stat_data + 4);
-    time = *(uint32_t*)(stat_data + 8);
-    
+    mode = *(uint32_t *)(stat_data);
+    size = *(uint32_t *)(stat_data + 4);
+    time = *(uint32_t *)(stat_data + 8);
+
     return true;
 }
 
 std::vector<ADBClient::SyncEntry> ADBClient::listDirectory(const std::string &path)
 {
     std::vector<SyncEntry> entries;
-    
+
     char len_buf[4];
     uint32_t len = path.length();
     len_buf[0] = (len >> 0) & 0xFF;
     len_buf[1] = (len >> 8) & 0xFF;
     len_buf[2] = (len >> 16) & 0xFF;
     len_buf[3] = (len >> 24) & 0xFF;
-    
-    std::string msg = "LIST" + std::string(len_buf, 4) + path;
-    if (!sendData(msg)) return entries;
 
-    while(true) {
+    std::string msg = "LIST" + std::string(len_buf, 4) + path;
+    if (!sendData(msg))
+        return entries;
+
+    while (true)
+    {
         char header[4];
-        if (!receiveExact(header, 4)) break;
+        if (!receiveExact(header, 4))
+            break;
         std::string id(header, 4);
-        
-        if (id == "DONE") break;
-        if (id == "FAIL") {
+
+        if (id == "DONE")
+            break;
+        if (id == "FAIL")
+        {
             char len_buf[4];
-            if (receiveExact(len_buf, 4)) {
-                uint32_t len = *(uint32_t*)len_buf;
+            if (receiveExact(len_buf, 4))
+            {
+                uint32_t len = *(uint32_t *)len_buf;
                 receiveData(len); // Consume error message
             }
             break;
         }
-        if (id != "DENT") break;
+        if (id != "DENT")
+            break;
 
         char stat_data[16];
-        if (!receiveExact(stat_data, 16)) break;
+        if (!receiveExact(stat_data, 16))
+            break;
 
         SyncEntry entry;
-        entry.mode = *(uint32_t*)(stat_data);
-        entry.size = *(uint32_t*)(stat_data + 4);
-        entry.time = *(uint32_t*)(stat_data + 8);
-        uint32_t name_len = *(uint32_t*)(stat_data + 12);
+        entry.mode = *(uint32_t *)(stat_data);
+        entry.size = *(uint32_t *)(stat_data + 4);
+        entry.time = *(uint32_t *)(stat_data + 8);
+        uint32_t name_len = *(uint32_t *)(stat_data + 12);
 
-        if (name_len > 0) {
+        if (name_len > 0)
+        {
             std::vector<char> name_buf(name_len);
-            if (!receiveExact(name_buf.data(), name_len)) break;
+            if (!receiveExact(name_buf.data(), name_len))
+                break;
             entry.name = std::string(name_buf.data(), name_len);
             entries.push_back(entry);
         }
     }
     return entries;
 }
+
+bool ADBClient::checkRootAccess()
+{
+    std::string result = executeShell("id");
+    return (result.find("uid=0") != std::string::npos);
+}
+
+bool ADBClient::acquireRoot()
+{
+    std::cout << "尝试获取root权限..." << std::endl;
+
+    // 方法1: adb root (适用于userdebug版本)
+    disconnect();
+    if (!connect())
+        return false;
+
+    if (!sendADBCommand("root:"))
+    {
+        std::cout << "  root命令发送失败" << std::endl;
+    }
+    else
+    {
+        receiveADBStatus();
+        std::cout << "  已发送root命令，等待设备重启..." << std::endl;
+
+        // 等待设备重新连接
+        disconnect();
+#ifdef _WIN32
+        Sleep(3000);
+#else
+        sleep(3);
+#endif
+
+        if (connect())
+        {
+            std::string result = executeShell("id");
+            if (result.find("uid=0") != std::string::npos)
+            {
+                std::cout << "✓ root权限获取成功 (通过adb root)" << std::endl;
+                return true;
+            }
+        }
+    }
+
+    // 重新连接以继续尝试其他方法
+    if (!connected)
+        connect();
+
+    // 方法2: su命令 (适用于已root的设备)
+    std::string su_test = executeShell("su -c 'id'");
+    if (su_test.find("uid=0") != std::string::npos)
+    {
+        std::cout << "✓ 检测到su可用，可使用root权限" << std::endl;
+        return true;
+    }
+
+    // 方法3: su版本2 (不同的su实现)
+    su_test = executeShell("su 0 id");
+    if (su_test.find("uid=0") != std::string::npos)
+    {
+        std::cout << "✓ 检测到su可用(版本2)，可使用root权限" << std::endl;
+        return true;
+    }
+
+    std::cout << "✗ 无法获取root权限" << std::endl;
+    std::cout << "  提示: 需要以下任一条件:" << std::endl;
+    std::cout << "    1. userdebug/eng版本系统 (支持adb root)" << std::endl;
+    std::cout << "    2. 已root的设备 (安装了su)" << std::endl;
+    return false;
+}
+
+std::string ADBClient::executeShellAsRoot(const std::string& command) {
+        // 先尝试直接执行（如果已经是root）
+        std::string direct_result = executeShell("id");
+        if (direct_result.find("uid=0") != std::string::npos) {
+            return executeShell(command);
+        }
+        
+        // 尝试使用su
+        std::string su_result = executeShell("su -c '" + command + "'");
+        if (!su_result.empty() && su_result.find("not found") == std::string::npos) {
+            return su_result;
+        }
+        
+        // 尝试su的另一种形式
+        su_result = executeShell("su 0 " + command);
+        if (!su_result.empty() && su_result.find("not found") == std::string::npos) {
+            return su_result;
+        }
+        
+        // 都失败了，返回普通执行结果
+        return executeShell(command);
+    }

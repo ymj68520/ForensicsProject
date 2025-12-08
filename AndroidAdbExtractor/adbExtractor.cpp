@@ -31,6 +31,15 @@ void AndroidDirectoryExtractor::createDirectory(const std::string &path){
 }
 
 bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_path, const std::string& local_base) {
+    // 检查是否为目录（使用root权限）
+    std::string check;
+    if(has_root && use_root_for_extraction){
+        check = adb.executeShellAsRoot("[ -d " + remote_path + " ] && echo DIR || echo FILE");
+    }
+    else{
+        check = adb.executeShell("[ -d " + remote_path + " ] && echo DIR || echo FILE");
+    }
+    
     uint32_t mode = 0, size = 0, time = 0; // Declared here
     if (!adb.statFile(remote_path, mode, size, time)) {
         // stat failed. This might be permission denied or file not found.
@@ -79,7 +88,7 @@ bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_p
     return true;
 }
 
-bool AndroidDirectoryExtractor::initialize() {
+bool AndroidDirectoryExtractor::initialize(bool auto_root = true) {
     if (!adb.connect()) return false;
 
     auto devices = adb.getDevices();
@@ -98,6 +107,24 @@ bool AndroidDirectoryExtractor::initialize() {
     if (!adb.connect()) return false;
     if (!adb.selectDevice(devices[0])) return false;
     
+    // 检查并尝试获取root权限
+    if(auto_root){
+        std::cout << "\n检查root权限状态..." << std::endl;
+            has_root = adb.checkRootAccess();
+            
+            if (has_root) {
+                std::cout << "✓ 已具有root权限" << std::endl;
+            } else {
+                std::cout << "当前无root权限，尝试获取..." << std::endl;
+                has_root = adb.acquireRoot();
+                
+                // 重新选择设备（adb root后需要重连）
+                if (has_root) {
+                    adb.selectDevice(devices[0]);
+                }
+            }
+    }
+
     if (!adb.syncConnect()) {
             std::cerr << "Failed to establish sync connection" << std::endl;
             return false;
