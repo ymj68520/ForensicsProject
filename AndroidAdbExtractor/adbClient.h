@@ -30,6 +30,8 @@ private:
     std::string host;
     int port;
     bool connected;
+    std::string current_serial; // Store selected device serial
+    bool in_sync_mode; // Track if currently in sync mode
 
     // 初始化socket库（Windows only）
     void initSocket();
@@ -99,6 +101,14 @@ public:
 
     // 使用root权限执行命令
     std::string executeShellAsRoot(const std::string& command);
+
+    // Raw execution (no PTY, useful for binary data)
+    bool executeRaw(const std::string& command, std::vector<char>& output);
+
+    // Shell-based fallback methods for Root extraction
+    bool statFileShell(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time);
+    std::vector<SyncEntry> listDirectoryShell(const std::string& path);
+    bool pullFileShell(const std::string& remote_path, const std::string& local_path);
     
 };
 

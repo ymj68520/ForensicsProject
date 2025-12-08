@@ -1,6 +1,7 @@
 #include "adbClient.h"
 #include <cstdint>
 #include <cstdlib>
+#include <sstream>
 
 void ADBClient::initSocket()
 {
@@ -21,7 +22,7 @@ void ADBClient::cleanupSocket()
 }
 
 ADBClient::ADBClient(const std::string &h, int p)
-    : host(h), port(p), connected(false), sock(-1)
+    : host(h), port(p), connected(false), sock(-1), in_sync_mode(false)
 {
 #ifdef _WIN32
     WSADATA wsaData;
@@ -135,6 +136,7 @@ bool ADBClient::disconnect()
     {
         cleanupSocket();
         connected = false;
+        in_sync_mode = false;
     }
     return true;
 }
@@ -199,19 +201,32 @@ bool ADBClient::selectDevice(const std::string &serial)
     std::string cmd = "host:transport:" + serial;
     if (!sendADBCommand(cmd))
         return false;
-    return receiveADBStatus();
+    if (receiveADBStatus()) {
+        current_serial = serial;
+        return true;
+    }
+    return false;
 }
 
 std::string ADBClient::executeShell(const std::string &command)
 {
+    if (!connected && !current_serial.empty()) {
+        connect();
+        selectDevice(current_serial);
+    }
+    
+    in_sync_mode = false; // Shell invalidates sync mode
     std::string cmd = "shell:" + command;
     if (!sendADBCommand(cmd))
     {
         std::cerr << "Failed to send shell command" << std::endl;
+        disconnect();
         return "";
     }
-    if (!receiveADBStatus())
+    if (!receiveADBStatus()) {
+        disconnect();
         return "";
+    }
 
     std::string result;
     char buffer[4096];
@@ -221,18 +236,39 @@ std::string ADBClient::executeShell(const std::string &command)
     {
         result.append(buffer, received);
     }
+    disconnect(); // Shell command consumes connection
     return result;
 }
 
 bool ADBClient::syncConnect()
 {
+    if (!connected && !current_serial.empty()) {
+        connect();
+        selectDevice(current_serial);
+    }
+
     if (!sendADBCommand("sync:"))
         return false;
-    return receiveADBStatus();
+    if (receiveADBStatus()) {
+        in_sync_mode = true;
+        return true;
+    }
+    return false;
 }
 
 bool ADBClient::receiveFile(const std::string &remote_path, const std::string &local_path, uint32_t total_file_size)
 {
+    if (!connected || !in_sync_mode) {
+        if (!current_serial.empty()) {
+            disconnect();
+            if(!connect()) return false;
+            if(!selectDevice(current_serial)) return false;
+            if(!syncConnect()) return false;
+        } else {
+            return false;
+        }
+    }
+
     // Send STAT command to check file
     std::string stat_cmd = "STAT";
     stat_cmd += std::string(4, '\0'); // Placeholder for length
@@ -334,6 +370,17 @@ bool ADBClient::receiveFile(const std::string &remote_path, const std::string &l
 
 bool ADBClient::statFile(const std::string &remote_path, uint32_t &mode, uint32_t &size, uint32_t &time)
 {
+    if (!connected || !in_sync_mode) {
+        if (!current_serial.empty()) {
+            disconnect();
+            if(!connect()) return false;
+            if(!selectDevice(current_serial)) return false;
+            if(!syncConnect()) return false;
+        } else {
+            return false;
+        }
+    }
+
     char len_buf[4];
     uint32_t len = remote_path.length();
     len_buf[0] = (len >> 0) & 0xFF;
@@ -366,6 +413,16 @@ bool ADBClient::statFile(const std::string &remote_path, uint32_t &mode, uint32_
 std::vector<ADBClient::SyncEntry> ADBClient::listDirectory(const std::string &path)
 {
     std::vector<SyncEntry> entries;
+
+    if (!connected || !in_sync_mode) {
+        if (!current_serial.empty()) {
+            disconnect();
+            if(!connect()) ; // error handling? returns empty entries
+            if(!selectDevice(current_serial)) ;
+            if(!syncConnect()) ;
+        }
+        if (!connected || !in_sync_mode) return entries;
+    }
 
     char len_buf[4];
     uint32_t len = path.length();
@@ -430,67 +487,65 @@ bool ADBClient::checkRootAccess()
 
 bool ADBClient::acquireRoot()
 {
-    std::cout << "尝试获取root权限..." << std::endl;
+    std::cout << "Attempting to acquire root..." << std::endl;
 
-    // 方法1: adb root (适用于userdebug版本)
-    disconnect();
-    if (!connect())
-        return false;
+    if (!connected && !current_serial.empty()) {
+        connect();
+        selectDevice(current_serial);
+    }
 
     if (!sendADBCommand("root:"))
     {
-        std::cout << "  root命令发送失败" << std::endl;
+        std::cout << "  Failed to send root command" << std::endl;
+        disconnect(); // Reset on failure
     }
     else
     {
-        receiveADBStatus();
-        std::cout << "  已发送root命令，等待设备重启..." << std::endl;
-
-        // 等待设备重新连接
-        disconnect();
+        if (receiveADBStatus()) {
+            std::cout << "  Sent root command, waiting for device restart..." << std::endl;
+            disconnect();
 #ifdef _WIN32
-        Sleep(3000);
+            Sleep(3000);
 #else
-        sleep(3);
+            sleep(3);
 #endif
-
-        if (connect())
-        {
-            std::string result = executeShell("id");
-            if (result.find("uid=0") != std::string::npos)
-            {
-                std::cout << "✓ root权限获取成功 (通过adb root)" << std::endl;
-                return true;
+            if (connect()) {
+                if (!current_serial.empty()) selectDevice(current_serial);
+                // Check id
+                std::string result = executeShell("id"); 
+                // executeShell will disconnect at end!
+                if (result.find("uid=0") != std::string::npos) {
+                    std::cout << "✓ Root access acquired (via adb root)" << std::endl;
+                    return true;
+                }
             }
+        } else {
+             std::cout << "  'adb root' failed (likely production build)" << std::endl;
+             disconnect(); // Reset
         }
     }
 
-    // 重新连接以继续尝试其他方法
-    if (!connected)
-        connect();
-
-    // 方法2: su命令 (适用于已root的设备)
+    // Method 2: su command
     std::string su_test = executeShell("su -c 'id'");
     if (su_test.find("uid=0") != std::string::npos)
     {
-        std::cout << "✓ 检测到su可用，可使用root权限" << std::endl;
+        std::cout << "✓ su available" << std::endl;
         return true;
     }
 
-    // 方法3: su版本2 (不同的su实现)
+    // Method 3: su version 2
     su_test = executeShell("su 0 id");
     if (su_test.find("uid=0") != std::string::npos)
     {
-        std::cout << "✓ 检测到su可用(版本2)，可使用root权限" << std::endl;
+        std::cout << "✓ su (ver 2) available" << std::endl;
         return true;
     }
 
-    std::cout << "✗ 无法获取root权限" << std::endl;
-    std::cout << "  提示: 需要以下任一条件:" << std::endl;
-    std::cout << "    1. userdebug/eng版本系统 (支持adb root)" << std::endl;
-    std::cout << "    2. 已root的设备 (安装了su)" << std::endl;
+    std::cout << "✗ Failed to acquire root" << std::endl;
     return false;
 }
+
+
 
 std::string ADBClient::executeShellAsRoot(const std::string& command) {
         // 先尝试直接执行（如果已经是root）
@@ -514,3 +569,159 @@ std::string ADBClient::executeShellAsRoot(const std::string& command) {
         // 都失败了，返回普通执行结果
         return executeShell(command);
     }
+
+bool ADBClient::executeRaw(const std::string& command, std::vector<char>& output) {
+    if (!connected && !current_serial.empty()) {
+        connect();
+        selectDevice(current_serial);
+    }
+    
+    in_sync_mode = false;
+    std::string cmd = "exec:" + command;
+    if (!sendADBCommand(cmd)) { disconnect(); return false; }
+    if (!receiveADBStatus()) { disconnect(); return false; }
+
+    char buffer[4096];
+    int received;
+    output.clear();
+    while ((received = recv(sock, buffer, sizeof buffer, 0)) > 0) {
+        output.insert(output.end(), buffer, buffer + received);
+    }
+    disconnect();
+    return true;
+}
+
+// ... statFileShell ... listDirectoryShell ... pullFileShell ... (which call executeShellAsRoot -> executeShell)
+// They rely on executeShell handling connection, which it now does.
+
+
+
+bool ADBClient::statFileShell(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time) {
+    // Try using 'stat' command (toybox/busybox)
+    // Format: %f (hex raw mode), %s (size), %Y (time)
+    std::string cmd = "stat -c '%f %s %Y' " + remote_path;
+    std::string result = executeShellAsRoot(cmd);
+    
+    // Check for error
+    if (result.empty() || result.find("No such file") != std::string::npos || result.find("stat:") != std::string::npos) {
+        // Fallback: simple existence check for directory? 
+        // Parsing ls -l is harder for exact mode. 
+        // Let's assume failure for now if stat is missing, 
+        // but most rooted devices have stat.
+        return false;
+    }
+
+    uint32_t raw_mode = 0;
+    unsigned long long raw_size = 0;
+    unsigned long long raw_time = 0;
+    
+    if (sscanf(result.c_str(), "%x %llu %llu", &raw_mode, &raw_size, &raw_time) == 3) {
+        mode = raw_mode;
+        size = (uint32_t)raw_size;
+        time = (uint32_t)raw_time;
+        return true;
+    }
+    return false;
+}
+
+std::vector<ADBClient::SyncEntry> ADBClient::listDirectoryShell(const std::string& path) {
+    std::vector<SyncEntry> entries;
+    // ls -ln: numeric uid/gid. 
+    // Format usually: mode links uid gid size date time name
+    // Android toybox ls -ln:
+    // drwxrwx--x 3 1000 1000 4096 2023-01-01 12:00 name
+    
+    std::string cmd = "ls -ln " + path;
+    std::string result = executeShellAsRoot(cmd);
+    
+    std::istringstream stream(result);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.empty() || line.find("total ") == 0) continue;
+        
+        char permissions[11];
+        int links;
+        int uid, gid;
+        unsigned long long size;
+        std::string date, time_str, name;
+        
+        // Simple heuristic parser. 
+        // Note: Date/Time parsing varies (year vs time). We'll set time to 0 for simplicity or implement complex parsing.
+        // We mainly need Name, Mode (dir vs file), Size.
+        
+        std::stringstream ss(line);
+        std::string perm_str;
+        ss >> perm_str;
+        
+        if (perm_str.length() != 10) continue; // Invalid line
+
+        SyncEntry entry;
+        entry.size = 0;
+        entry.time = 0;
+        entry.mode = 0;
+        
+        // Parse type
+        if (perm_str[0] == 'd') entry.mode |= 0x4000; // S_IFDIR
+        else if (perm_str[0] == '-') entry.mode |= 0x8000; // S_IFREG
+        else continue; // Skip links/sockets for now
+        
+        // Skip links, uid, gid
+        std::string dummy;
+        ss >> dummy >> dummy >> dummy; // links, uid, gid
+        
+        ss >> entry.size;
+        ss >> dummy >> dummy; // date, time
+        
+        // Read remaining as name (can contain spaces)
+        std::string part;
+        std::string full_name = "";
+        while (ss >> part) {
+            if (!full_name.empty()) full_name += " ";
+            full_name += part;
+        }
+        entry.name = full_name;
+        
+        if (!entry.name.empty() && entry.name != "." && entry.name != "..") {
+             entries.push_back(entry);
+        }
+    }
+    return entries;
+}
+
+bool ADBClient::pullFileShell(const std::string& remote_path, const std::string& local_path) {
+    // Attempt to pull using 'cat' via 'exec' service (no PTY, binary safe-ish)
+    // Command: su -c 'cat "path"'
+    // Note: quoting path is important.
+    
+    std::string cmd;
+    // Check if we need su
+    std::string id = executeShell("id");
+    if (id.find("uid=0") != std::string::npos) {
+        cmd = "cat \"" + remote_path + "\"";
+    } else {
+        // Try su
+        // Note: exec:su -c ... works on some devices, fails on others.
+        // fallback to shell:su ... but that has PTY issues (CRLF).
+        // Let's try exec:su first.
+        cmd = "su -c 'cat \"" + remote_path + "\"'";
+    }
+    
+    std::vector<char> data;
+    if (!executeRaw(cmd, data)) {
+        std::cerr << "Failed to pull file via shell: " << remote_path << std::endl;
+        return false;
+    }
+    
+    if (data.empty()) {
+        // Empty file or error. Check if file exists?
+        // Assume empty file is fine if stat succeeded before.
+    }
+    
+    std::ofstream outfile(local_path, std::ios::binary);
+    if (!outfile.is_open()) return false;
+    
+    outfile.write(data.data(), data.size());
+    outfile.close();
+    
+    return true;
+}

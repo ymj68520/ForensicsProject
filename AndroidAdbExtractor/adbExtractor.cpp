@@ -41,9 +41,19 @@ bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_p
     }
     
     uint32_t mode = 0, size = 0, time = 0; // Declared here
-    if (!adb.statFile(remote_path, mode, size, time)) {
+    bool stat_success = adb.statFile(remote_path, mode, size, time);
+    
+    // Fallback to Shell-based STAT if Sync STAT fails (e.g. permission denied)
+    if (!stat_success && has_root) {
+        stat_success = adb.statFileShell(remote_path, mode, size, time);
+        if (stat_success) {
+           // std::cout << "Debug: Used Shell STAT for " << remote_path << std::endl;
+        }
+    }
+
+    if (!stat_success) {
         // stat failed. This might be permission denied or file not found.
-        std::cerr << "Failed to stat: " << remote_path << std::endl;
+        std::cerr << "Failed to stat: " << remote_path << " (Permission denied?)" << std::endl;
         return false;
     }
     
@@ -51,6 +61,16 @@ bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_p
     if ((mode & 0xF000) == 0x4000) {
         createDirectory(local_base);
         std::vector<ADBClient::SyncEntry> files = adb.listDirectory(remote_path);
+        
+        // Fallback to Shell List if Sync List returns empty/fail but we know it's a dir
+        // (Note: Sync list usually returns just empty vector on permission denied, hard to distinguish from empty dir)
+        if (files.empty() && has_root) {
+             // Try shell listing to see if we missed anything due to perms
+             std::vector<ADBClient::SyncEntry> shell_files = adb.listDirectoryShell(remote_path);
+             if (!shell_files.empty()) {
+                 files = shell_files;
+             }
+        }
         
         for (const auto& entry : files) {
             if (entry.name == "." || entry.name == "..") continue;
@@ -82,13 +102,21 @@ bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_p
             // Close to allow receiveFile to open for writing. If not opened, it's fine.
             local_file.close(); 
             
-            return adb.receiveFile(remote_path, local_base, size); // Pass remote file size
+            bool pull_success = adb.receiveFile(remote_path, local_base, size); // Pass remote file size
+            
+            // Fallback to Shell Pull
+            if (!pull_success && has_root) {
+                std::cout << "Sync failed, trying Root Shell Pull for: " << remote_path << std::endl;
+                pull_success = adb.pullFileShell(remote_path, local_base);
+            }
+            
+            return pull_success;
     }
     
     return true;
 }
 
-bool AndroidDirectoryExtractor::initialize(bool auto_root = true) {
+bool AndroidDirectoryExtractor::initialize(bool auto_root) {
     if (!adb.connect()) return false;
 
     auto devices = adb.getDevices();

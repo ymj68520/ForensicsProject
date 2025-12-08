@@ -2,7 +2,7 @@
 #include <iostream>
 #include <vector>
 
-int adbTest(){
+int main(int argc, char** argv) {
     std::cout << "=== Android Directory Extractor (using ADB protocol) ===" << std::endl;
 
     AndroidDirectoryExtractor extractor("./extracted_android_data");
@@ -12,13 +12,24 @@ int adbTest(){
         return 1;
     }
 
-    // std::vector<std::string> dirs = {"/data", "/system"};
-    // extractor.extractMultiple(dirs);
+    std::vector<std::string> paths_to_extract;
+    if (argc > 1) {
+        for (int i = 1; i < argc; ++i) {
+            paths_to_extract.push_back(argv[i]);
+        }
+    } else {
+        // Default behavior if no arguments provided
+        std::cout << "No paths provided. Defaulting to /system/build.prop." << std::endl;
+        paths_to_extract.push_back("/system/build.prop");
+    }
 
-    // Test with a specific file that should exist on an unrooted device
-    std::vector<std::string> test_files = {"/sdcard/test_file.txt"}; 
-    std::cout << "\nAttempting to extract: " << test_files[0] << std::endl;
-    extractor.extractMultiple(test_files);
+    std::cout << "\nAttempting to extract: ";
+    for (const auto& path : paths_to_extract) {
+        std::cout << path << " ";
+    }
+    std::cout << std::endl;
+
+    extractor.extractMultiple(paths_to_extract);
 
     return 0;
 }
