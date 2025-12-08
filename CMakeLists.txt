@@ -46,7 +46,10 @@ set(SOURCES
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
     HTTPServer/HTTPserver.cpp
-    AndroidAnalyzer/AndroidAnalyzer.cpp
+    AndroidAnalyzer/AndroidAnalyzerCore.cpp
+    AndroidAnalyzer/AndroidDataParsers.cpp
+    AndroidAnalyzer/AndroidSystemParsers.cpp
+    AndroidAnalyzer/AndroidAnalysisDatabase.cpp
 )
 
 # Create executable
