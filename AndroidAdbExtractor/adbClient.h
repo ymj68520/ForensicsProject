@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <fstream>
+#include <cstdint>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -52,16 +53,9 @@ private:
     bool receiveADBStatus();
 
 public:
-    ADBClient(const std::string &h = "127.0.0.1", int p = 5037)
-        : host(h), port(p), connected(false), sock(-1)
-    {
-        initSocket();
-    }
+    ADBClient(const std::string &h = "127.0.0.1", int p = 5037);
 
-    ~ADBClient()
-    {
-        disconnect();
-    }
+    ~ADBClient();
 
     // 连接ABD服务器
     bool connect();
@@ -82,10 +76,20 @@ public:
     bool syncConnect();
 
     // 接收文件
-    bool receiveFile(const std::string &remote_path, const std::string &local_path);
+    bool receiveFile(const std::string &remote_path, const std::string &local_path, uint32_t total_file_size = 0);
 
-    // 列出目录
-    std::vector<std::string> listDirectory(const std::string &path);
+    struct SyncEntry {
+        std::string name;
+        uint32_t mode;
+        uint32_t size;
+        uint32_t time;
+    };
+
+    // 列出目录 (Sync mode)
+    std::vector<SyncEntry> listDirectory(const std::string &path);
+
+    // 获取文件信息 (Sync mode)
+    bool statFile(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time);
 };
 
 #endif // ADB_CLIENT_H
