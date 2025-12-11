@@ -2,9 +2,50 @@
 #include <cstdint>
 #include <cstdlib>
 #include <sstream>
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+// Initialize Windows console encoding for proper Unicode/Chinese character display
+void initializeConsoleEncoding() {
+#ifdef _WIN32
+    // Set console to UTF-8 encoding
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+
+    // Also try to enable virtual terminal processing for ANSI escape codes
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hOut, &dwMode)) {
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            SetConsoleMode(hOut, dwMode);
+        }
+    }
+
+    // Set stderr to UTF-8 as well
+    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+    if (hErr != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hErr, &dwMode)) {
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            SetConsoleMode(hErr, dwMode);
+        }
+    }
+#endif
+}
 
 void ADBClient::initSocket()
 {
+    // Initialize console encoding for Windows
+    initializeConsoleEncoding();
+
     // Socket initialization moved to constructor/connect logic
 }
 
@@ -25,6 +66,9 @@ ADBClient::ADBClient(const std::string &h, int p)
     : host(h), port(p), connected(false), sock(-1), in_sync_mode(false)
 {
 #ifdef _WIN32
+    // Initialize console encoding first
+    initializeConsoleEncoding();
+
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
@@ -515,7 +559,7 @@ bool ADBClient::acquireRoot()
                 std::string result = executeShell("id"); 
                 // executeShell will disconnect at end!
                 if (result.find("uid=0") != std::string::npos) {
-                    std::cout << "✓ Root access acquired (via adb root)" << std::endl;
+                    std::cout << "[OK] Root access acquired (via adb root)" << std::endl;
                     return true;
                 }
             }
@@ -529,7 +573,7 @@ bool ADBClient::acquireRoot()
     std::string su_test = executeShell("su -c 'id'");
     if (su_test.find("uid=0") != std::string::npos)
     {
-        std::cout << "✓ su available" << std::endl;
+        std::cout << "[OK] su available" << std::endl;
         return true;
     }
 
@@ -537,11 +581,11 @@ bool ADBClient::acquireRoot()
     su_test = executeShell("su 0 id");
     if (su_test.find("uid=0") != std::string::npos)
     {
-        std::cout << "✓ su (ver 2) available" << std::endl;
+        std::cout << "[OK] su (ver 2) available" << std::endl;
         return true;
     }
 
-    std::cout << "✗ Failed to acquire root" << std::endl;
+    std::cout << "[FAIL] Failed to acquire root" << std::endl;
     return false;
 }
 

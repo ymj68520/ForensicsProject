@@ -16,6 +16,7 @@
 /tests/system_assets/
 AGENTS.md
 GEMINI.md
+CLAUDE.md
 android_test_*
 
 # User-specific files
@@ -383,3 +384,4 @@ tests/usage_stats_1001
 tests/WifiConfigStore.xml
 tests/packages.xml
 AndroidAdbExtractor/adbTest
+AndroidAdbExtractor/README_Windows_Encoding_Fix.md

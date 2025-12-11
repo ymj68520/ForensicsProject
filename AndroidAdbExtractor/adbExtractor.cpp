@@ -5,9 +5,44 @@
 #include <chrono>
 #include <iostream>
 #include <vector>
-#include <fstream> 
+#include <fstream>
 #include <cerrno>   // For errno
 #include <cstring>  // For strerror
+
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+// Initialize Windows console encoding for proper Unicode/Chinese character display
+void initializeConsoleEncoding() {
+#ifdef _WIN32
+    // Set console to UTF-8 encoding
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+
+    // Also try to enable virtual terminal processing for ANSI escape codes
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hOut, &dwMode)) {
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            SetConsoleMode(hOut, dwMode);
+        }
+    }
+
+    // Set stderr to UTF-8 as well
+    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+    if (hErr != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hErr, &dwMode)) {
+            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            SetConsoleMode(hErr, dwMode);
+        }
+    }
+#endif
+}
 
 void AndroidDirectoryExtractor::createDirectory(const std::string &path){
     std::string temp = path;
@@ -31,7 +66,7 @@ void AndroidDirectoryExtractor::createDirectory(const std::string &path){
 }
 
 bool AndroidDirectoryExtractor::extractFileRecursive(const std::string& remote_path, const std::string& local_base) {
-    // 检查是否为目录（使用root权限）
+    // Check if it's a directory (using root privileges)
     std::string check;
     if(has_root && use_root_for_extraction){
         check = adb.executeShellAsRoot("[ -d " + remote_path + " ] && echo DIR || echo FILE");
@@ -135,18 +170,18 @@ bool AndroidDirectoryExtractor::initialize(bool auto_root) {
     if (!adb.connect()) return false;
     if (!adb.selectDevice(devices[0])) return false;
     
-    // 检查并尝试获取root权限
+    // Check and attempt to acquire root privileges
     if(auto_root){
-        std::cout << "\n检查root权限状态..." << std::endl;
+        std::cout << "\nChecking root privilege status..." << std::endl;
             has_root = adb.checkRootAccess();
-            
+
             if (has_root) {
-                std::cout << "✓ 已具有root权限" << std::endl;
+                std::cout << "[OK] Already have root privileges" << std::endl;
             } else {
-                std::cout << "当前无root权限，尝试获取..." << std::endl;
+                std::cout << "No root privileges currently, attempting to acquire..." << std::endl;
                 has_root = adb.acquireRoot();
-                
-                // 重新选择设备（adb root后需要重连）
+
+                // Re-select device (need to reconnect after adb root)
                 if (has_root) {
                     adb.selectDevice(devices[0]);
                 }
