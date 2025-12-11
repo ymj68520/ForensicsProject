@@ -385,3 +385,6 @@ tests/WifiConfigStore.xml
 tests/packages.xml
 AndroidAdbExtractor/adbTest
 AndroidAdbExtractor/README_Windows_Encoding_Fix.md
+AndroidAdbExtractor/adbTest.exe
+AndroidAdbExtractor/test_console_encoding.exe
+AndroidAdbExtractor/TEST_METHODS.md
