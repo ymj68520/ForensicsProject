@@ -23,6 +23,9 @@ typedef SOCKET socket_t;
 typedef int socket_t;
 #endif
 
+// Initialize Windows console encoding for proper Unicode/Chinese character display
+void initializeConsoleEncoding();
+
 class ADBClient
 {
 private:

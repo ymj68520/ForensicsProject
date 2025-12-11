@@ -15,35 +15,6 @@
 #include <fcntl.h>
 #endif
 
-// Initialize Windows console encoding for proper Unicode/Chinese character display
-void initializeConsoleEncoding() {
-#ifdef _WIN32
-    // Set console to UTF-8 encoding
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-
-    // Also try to enable virtual terminal processing for ANSI escape codes
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut != INVALID_HANDLE_VALUE) {
-        DWORD dwMode = 0;
-        if (GetConsoleMode(hOut, &dwMode)) {
-            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            SetConsoleMode(hOut, dwMode);
-        }
-    }
-
-    // Set stderr to UTF-8 as well
-    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
-    if (hErr != INVALID_HANDLE_VALUE) {
-        DWORD dwMode = 0;
-        if (GetConsoleMode(hErr, &dwMode)) {
-            dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            SetConsoleMode(hErr, dwMode);
-        }
-    }
-#endif
-}
-
 void AndroidDirectoryExtractor::createDirectory(const std::string &path){
     std::string temp = path;
     size_t pos = 0;
