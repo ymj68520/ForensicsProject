@@ -65,6 +65,18 @@ private:
     void extractAndScanSystemApps(const std::string& imageAppDir, const std::string& tempAppDir);
     void extractAndScanFramework(const std::string& imageFrameworkDir, const std::string& tempFrameworkDir);
 
+    // Build.prop analysis methods
+    BuildPropAnalysisResult analyzeBuildPropFile(const std::string& buildPropPath);
+    void generateBuildPropReport(const BuildPropAnalysisResult& result, const std::string& outputPath);
+    void generateUnrecognizedPropertiesReport(const std::vector<BuildPropEntry>& unrecognizedEntries, const std::string& outputPath);
+
+    // Build.prop helper methods
+    BuildPropEntry parseBuildPropEntry(const std::string& line);
+    DeviceInfo extractDeviceInfo(const std::vector<BuildPropEntry>& entries);
+    SecurityConfig extractSecurityConfig(const std::vector<BuildPropEntry>& entries);
+    SystemConfig extractSystemConfig(const std::vector<BuildPropEntry>& entries);
+    ForensicAnalysis performForensicAnalysis(const std::vector<BuildPropEntry>& entries, const DeviceInfo& deviceInfo);
+
     // Private members
     std::string imagePath_;
     std::string outputDbPath_;

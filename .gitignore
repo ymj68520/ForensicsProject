@@ -14,6 +14,7 @@
 /tests/android_image_src/
 /tests/test_assets/
 /tests/system_assets/
+/test/system
 AGENTS.md
 GEMINI.md
 CLAUDE.md
@@ -388,3 +389,10 @@ AndroidAdbExtractor/README_Windows_Encoding_Fix.md
 AndroidAdbExtractor/adbTest.exe
 AndroidAdbExtractor/test_console_encoding.exe
 AndroidAdbExtractor/TEST_METHODS.md
+device_build.prop
+.gitignore
+AndroidAnalyzer/BUILD_PROP_ANALYZER_README.md
+tests/system/build.prop
+AndroidAnalyzer/UNRECOGNIZED_PROPERTIES_DOCUMENTATION.md
+build_prop_analysis_report.txt
+simple_build_prop_test.exe

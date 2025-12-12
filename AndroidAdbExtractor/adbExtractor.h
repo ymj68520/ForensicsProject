@@ -43,6 +43,15 @@ class AndroidDirectoryExtractor{
     bool extractPartitionUsingDD(const std::string& partition_name, const std::string& block_device, const std::string& output_path);
     bool extractPartitionUsingShell(const std::string& block_device, const std::string& output_path);
 
+    // 新的分区直接拉取方法 - 实现dd + pull的组合
+    bool extractPartitionDirectly(const std::string& partition_name, const std::string& output_filename = "");
+    bool pullPartitionImage(const std::string& partition_name, const std::string& remote_path, const std::string& local_path);
+
+    // 流式传输方法 - 不需要在设备上创建临时文件
+    bool extractPartitionStreaming(const std::string& device_path, const std::string& output_path, uint64_t expected_size);
+    bool extractPartitionTraditional(const std::string& partition_name, const std::string& device_path,
+                                   const std::string& output_path, const std::string& output_filename);
+
     public:
     AndroidDirectoryExtractor(const std::string& output = "./extracted_data")
         : output_dir(output), has_root(false), use_root_for_extraction(false) {

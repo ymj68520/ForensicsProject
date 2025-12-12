@@ -68,8 +68,14 @@ void showUsage(const char* program_name) {
     std::cout << "  " << program_name << " --list-partitions" << std::endl;
     std::cout << "  " << program_name << " --extract-safe" << std::endl;
     std::cout << std::endl;
+    std::cout << "Direct Partition Extraction (DD + Pull):" << std::endl;
+    std::cout << "  " << program_name << " --direct vbmeta" << std::endl;
+    std::cout << "  " << program_name << " --direct system" << std::endl;
+    std::cout << "  " << program_name << " --direct system my_system.img" << std::endl;
+    std::cout << std::endl;
     std::cout << "Examples:" << std::endl;
-    std::cout << "  " << program_name << " --partition vbmeta      # Extract vbmeta partition" << std::endl;
+    std::cout << "  " << program_name << " --partition vbmeta      # Extract vbmeta partition (existing method)" << std::endl;
+    std::cout << "  " << program_name << " --direct system         # Direct extract system partition (dd + pull)" << std::endl;
     std::cout << "  " << program_name << " --extract-safe         # Extract all safe partitions" << std::endl;
     std::cout << "  " << program_name << " --list-partitions       # List available partitions" << std::endl;
     std::cout << "  " << program_name << " /system/build.prop      # Extract files (original behavior)" << std::endl;
@@ -171,6 +177,68 @@ void extractAllSafePartitions(AndroidDirectoryExtractor& extractor) {
     handlePartitionExtraction(extractor, safe_partitions);
 }
 
+void handleDirectExtraction(AndroidDirectoryExtractor& extractor,
+                           const std::vector<std::string>& args) {
+    std::cout << "\n=== Direct Partition Extraction Mode (DD + Pull) ===" << std::endl;
+
+    if (!extractor.hasRootAccess()) {
+        std::cout << "Error: Root access is required for direct partition extraction." << std::endl;
+        std::cout << "Please ensure your device is properly rooted." << std::endl;
+        return;
+    }
+
+    std::string partition_name;
+    std::string output_filename;
+
+    if (args.size() >= 1) {
+        partition_name = args[0];
+    } else {
+        std::cerr << "Error: --direct requires partition name" << std::endl;
+        return;
+    }
+
+    if (args.size() >= 2) {
+        output_filename = args[1];
+    }
+
+    // 检查分区安全性
+    if (!isSafePartition(partition_name)) {
+        std::cout << "Warning: Partition '" << partition_name
+                  << "' may be potentially unsafe." << std::endl;
+        std::cout << "This could affect device operation if not handled properly." << std::endl;
+
+        std::cout << "Do you want to continue? (y/N): ";
+        std::string response;
+        std::getline(std::cin, response);
+
+        if (response != "y" && response != "Y") {
+            std::cout << "Extraction cancelled by user." << std::endl;
+            return;
+        }
+    }
+
+    std::cout << "\nStarting direct extraction for partition: " << partition_name << std::endl;
+    std::cout << "This will execute: dd if=/dev/block/by-name/" << partition_name
+              << " of=/sdcard/" << (output_filename.empty() ? (partition_name + ".img") : output_filename)
+              << " bs=4096" << std::endl;
+    std::cout << "And then pull the image to your computer." << std::endl;
+
+    // 执行直接提取
+    bool success = extractor.extractPartitionDirectly(partition_name, output_filename);
+
+    if (success) {
+        std::cout << "\n✓ Direct extraction completed successfully!" << std::endl;
+        std::cout << "The partition image has been saved to: ./extracted_android_data/partitions/" << std::endl;
+    } else {
+        std::cout << "\n✗ Direct extraction failed." << std::endl;
+        std::cout << "Please check:" << std::endl;
+        std::cout << "1. Device has root access" << std::endl;
+        std::cout << "2. Partition exists and is readable" << std::endl;
+        std::cout << "3. SD card has sufficient space" << std::endl;
+        std::cout << "4. USB connection is stable" << std::endl;
+    }
+}
+
 int main(int argc, char** argv) {
     // Initialize console encoding for Windows
     initializeConsoleEncoding();
@@ -211,6 +279,16 @@ int main(int argc, char** argv) {
         std::vector<std::string> partitions(args.begin() + 1, args.end());
         handlePartitionExtraction(extractor, partitions);
     }
+    else if (args[0] == "--direct") {
+        if (args.size() <= 1) {
+            std::cerr << "Error: --direct requires partition name" << std::endl;
+            showUsage(argv[0]);
+            return 1;
+        }
+
+        std::vector<std::string> direct_args(args.begin() + 1, args.end());
+        handleDirectExtraction(extractor, direct_args);
+    }
     else if (args[0] == "--list-partitions") {
         listAvailablePartitions(extractor);
     }
@@ -233,6 +311,7 @@ int main(int argc, char** argv) {
 
         std::cout << "\nTip: Use --partition to extract Android partitions" << std::endl;
         std::cout << "Example: " << argv[0] << " --partition vbmeta boot" << std::endl;
+        std::cout << "Example: " << argv[0] << " --direct system" << std::endl;
     }
 
     std::cout << "\nProgram completed. Check './extracted_android_data/' for results." << std::endl;

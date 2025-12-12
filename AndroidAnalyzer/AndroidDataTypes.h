@@ -97,3 +97,65 @@ struct UsageStatRecord {
     int64_t lastTimeUsed;
     int64_t firstTimeStamp;
 };
+
+// Build.prop analysis structures
+struct BuildPropEntry {
+    std::string key;
+    std::string value;
+    std::string category;
+    std::string description;
+    std::string securityImplication;
+    bool isIdentified;
+};
+
+struct DeviceInfo {
+    std::string manufacturer;
+    std::string brand;
+    std::string model;
+    std::string device;
+    std::string product;
+    std::string fingerprint;
+    std::string securityPatchLevel;
+    std::string buildVersion;
+    int sdkVersion;
+    std::string buildDate;
+};
+
+struct SecurityConfig {
+    bool adbEnabled;
+    bool debugEnabled;
+    bool mockLocationDisabled;
+    bool secureEnabled;
+    bool otaEncrypted;
+    std::vector<std::string> securityFlags;
+};
+
+struct SystemConfig {
+    std::string cpuArch;
+    std::vector<std::string> cpuAbilist;
+    int screenDensity;
+    std::string locale;
+    std::vector<std::string> supportedGps;
+    bool blurSupported;
+    std::string openglVersion;
+};
+
+struct ForensicAnalysis {
+    std::string deviceIdentifier;
+    std::string extractionDate;
+    std::vector<std::string> securityConcerns;
+    std::vector<std::string> unusualConfigurations;
+    std::vector<std::string> carrierCustomizations;
+    std::vector<std::string> vendorModifications;
+    std::string riskAssessment;
+};
+
+struct BuildPropAnalysisResult {
+    DeviceInfo deviceInfo;
+    SecurityConfig securityConfig;
+    SystemConfig systemConfig;
+    ForensicAnalysis forensicAnalysis;
+    std::vector<BuildPropEntry> allEntries;
+    std::vector<BuildPropEntry> unrecognizedEntries;
+    std::vector<BuildPropEntry> securityRelevantEntries;
+};

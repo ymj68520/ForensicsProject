@@ -450,3 +450,182 @@ std::vector<PartitionInfo> AndroidDirectoryExtractor::getPartitionList() {
 
     return partitions;
 }
+
+// 新的分区直接拉取方法实现
+bool AndroidDirectoryExtractor::pullPartitionImage(const std::string& partition_name, const std::string& remote_path, const std::string& local_path) {
+    std::cout << "Pulling partition image from device..." << std::endl;
+    std::cout << "Remote: " << remote_path << std::endl;
+    std::cout << "Local: " << local_path << std::endl;
+
+    // 使用adb pull命令下载镜像文件
+    bool pull_success = adb.pullFileShell(remote_path, local_path);
+
+    if (pull_success) {
+        std::cout << "Successfully pulled partition image: " << partition_name << std::endl;
+
+        // 验证文件大小
+        std::ifstream file(local_path, std::ios::binary | std::ios::ate);
+        if (file.is_open()) {
+            uint64_t file_size = file.tellg();
+            file.close();
+            std::cout << "Downloaded file size: " << file_size << " bytes ("
+                      << (file_size / 1024.0 / 1024.0) << " MB)" << std::endl;
+        }
+
+        // 清理设备上的临时文件
+        std::string cleanup_cmd = "rm -f " + remote_path;
+        adb.executeShellAsRoot(cleanup_cmd);
+
+        return true;
+    } else {
+        std::cerr << "Failed to pull partition image: " << partition_name << std::endl;
+        return false;
+    }
+}
+
+bool AndroidDirectoryExtractor::extractPartitionDirectly(const std::string& partition_name, const std::string& output_filename) {
+    if (!has_root) {
+        std::cerr << "Error: Root access required for direct partition extraction" << std::endl;
+        return false;
+    }
+
+    std::string filename = output_filename.empty() ? (partition_name + ".img") : output_filename;
+    std::string output_path = output_dir + "/partitions/" + filename;
+
+    std::cout << "=== Direct Partition Extraction (Streaming) ===" << std::endl;
+    std::cout << "Partition: " << partition_name << std::endl;
+    std::cout << "Output: " << output_path << std::endl;
+
+    // 创建分区输出目录
+    createDirectory(output_dir + "/partitions");
+
+    // 获取分区设备路径
+    std::string device_path = "/dev/block/by-name/" + partition_name;
+
+    // 验证分区是否存在
+    std::string check_cmd = "test -e " + device_path + " && echo 'exists' || echo 'not_exists'";
+    std::string check_result = adb.executeShellAsRoot(check_cmd);
+
+    if (check_result.find("not_exists") != std::string::npos) {
+        std::cerr << "Error: Partition " << partition_name << " does not exist at " << device_path << std::endl;
+        return false;
+    }
+
+    // 获取分区大小信息
+    std::string size_cmd = "stat -c '%s' " + device_path + " 2>/dev/null";
+    std::string size_result = adb.executeShellAsRoot(size_cmd);
+    uint64_t partition_size = 0;
+
+    if (!size_result.empty() && size_result.find("stat:") == std::string::npos) {
+        try {
+            partition_size = std::stoull(size_result);
+            std::cout << "Partition size: " << partition_size << " bytes ("
+                      << (partition_size / 1024.0 / 1024.0) << " MB)" << std::endl;
+        } catch (...) {
+            std::cout << "Warning: Could not determine partition size" << std::endl;
+        }
+    }
+
+    // 优先尝试流式传输，如果失败则回退到传统方法
+    std::cout << "\n=== Trying Streaming Method ===" << std::endl;
+    if (extractPartitionStreaming(device_path, output_path, partition_size)) {
+        std::cout << "\n=== Streaming Extraction Complete ===" << std::endl;
+        std::cout << "Successfully extracted partition: " << partition_name << std::endl;
+        std::cout << "Image saved to: " << output_path << std::endl;
+        return true;
+    }
+
+    std::cout << "\n=== Falling back to Traditional Method ===" << std::endl;
+    // 如果流式传输失败，回退到传统的SD卡方法
+    return extractPartitionTraditional(partition_name, device_path, output_path, output_filename);
+}
+
+// 流式传输实现 - 直接通过管道传输数据，无需在设备上创建临时文件
+bool AndroidDirectoryExtractor::extractPartitionStreaming(const std::string& device_path, const std::string& output_path, uint64_t expected_size) {
+    std::cout << "Using streaming method (no temporary files on device)" << std::endl;
+    std::cout << "Command: dd if=" << device_path << " bs=4096 | direct stream to computer" << std::endl;
+
+    // 使用executeRaw方法直接获取二进制数据流
+    std::string stream_cmd = "dd if=" + device_path + " bs=4096 2>/dev/null";
+
+    std::cout << "Starting streaming extraction..." << std::endl;
+
+    std::vector<char> output;
+    bool success = adb.executeRaw(stream_cmd, output);
+
+    if (success && !output.empty()) {
+        // 创建输出文件并写入数据
+        std::ofstream outfile2(output_path, std::ios::binary);
+        if (!outfile2) {
+            std::cerr << "Error: Cannot create output file: " << output_path << std::endl;
+            return false;
+        }
+
+        outfile2.write(output.data(), output.size());
+        outfile2.close();
+
+        if (!outfile2.good()) {
+            std::cerr << "Error: Failed to write data to output file" << std::endl;
+            std::remove(output_path.c_str());
+            return false;
+        }
+
+        std::cout << "Streaming completed successfully" << std::endl;
+        std::cout << "Total bytes received: " << output.size() << " ("
+                  << (output.size() / 1024.0 / 1024.0) << " MB)" << std::endl;
+
+        if (expected_size > 0) {
+            if (output.size() == expected_size) {
+                std::cout << "✓ Size verification passed" << std::endl;
+            } else {
+                std::cout << "⚠ Size difference: Expected(" << expected_size
+                          << ") != Received(" << output.size() << ")" << std::endl;
+            }
+        }
+
+        return true;
+    } else {
+        std::cerr << "Streaming failed or no data received" << std::endl;
+        // 删除可能的不完整文件
+        std::remove(output_path.c_str());
+        return false;
+    }
+}
+
+// 传统SD卡方法（作为备用方案）
+bool AndroidDirectoryExtractor::extractPartitionTraditional(const std::string& partition_name, const std::string& device_path, const std::string& output_path, const std::string& output_filename) {
+    std::cout << "Using traditional method (via device storage)" << std::endl;
+
+    std::string filename = output_filename.empty() ? (partition_name + ".img") : output_filename;
+    std::string remote_temp_path = "/sdcard/" + filename;
+
+    // 检查SD卡是否可用
+    std::string sd_check_cmd = "test -d /sdcard && echo 'sd_available' || echo 'sd_unavailable'";
+    std::string sd_result = adb.executeShellAsRoot(sd_check_cmd);
+
+    if (sd_result.find("sd_unavailable") != std::string::npos) {
+        std::cerr << "Error: /sdcard is not available on device" << std::endl;
+        std::cerr << "This method requires device storage. Streaming method should have been used instead." << std::endl;
+        return false;
+    }
+
+    // 清理可能存在的旧临时文件
+    std::string cleanup_cmd = "rm -f " + remote_temp_path;
+    adb.executeShellAsRoot(cleanup_cmd);
+
+    // 执行dd命令将分区复制到SD卡
+    std::cout << "Creating partition image on device..." << std::endl;
+    std::string dd_cmd = "dd if=" + device_path + " of=" + remote_temp_path + " bs=4096";
+    std::cout << "Executing: " << dd_cmd << std::endl;
+    std::string dd_result = adb.executeShellAsRoot(dd_cmd);
+
+    if (dd_result.find("No such file") != std::string::npos ||
+        dd_result.find("Permission denied") != std::string::npos ||
+        dd_result.find("Operation not permitted") != std::string::npos) {
+        std::cerr << "Error: DD command failed - " << dd_result << std::endl;
+        return false;
+    }
+
+    // 使用pullPartitionImage方法下载文件
+    return pullPartitionImage(partition_name, remote_temp_path, output_path);
+}
