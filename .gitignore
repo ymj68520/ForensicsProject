@@ -396,3 +396,12 @@ tests/system/build.prop
 AndroidAnalyzer/UNRECOGNIZED_PROPERTIES_DOCUMENTATION.md
 build_prop_analysis_report.txt
 simple_build_prop_test.exe
+test_compile.o
+docs/API_USAGE_GUIDE.md
+HTTPServer/API_USAGE_EXAMPLES.md
+HTTPServer/COMPLETE_API_DOCUMENTATION.md
+HTTPServer/DATABASE_API_DOCUMENTATION.md
+tests/run_all_tests.sh.in
+tests/run_integration_tests.sh.in
+tests/run_performance_tests.sh.in
+tests/run_unit_tests.sh.in

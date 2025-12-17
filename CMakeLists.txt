@@ -10,6 +10,29 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(SQLite3 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system thread)
 
+# Find nlohmann/json (try multiple methods)
+find_package(nlohmann_json QUIET)
+if(NOT nlohmann_json_FOUND)
+    # Try to find via pkg-config if available
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(NLOHMANN_JSON QUIET nlohmann_json)
+    endif()
+
+    if(NOT NLOHMANN_JSON_FOUND)
+        # Fallback to using header-only version
+        message(STATUS "Using system-installed nlohmann/json headers")
+        set(NLOHMANN_JSON_INCLUDE_DIRS "/usr/include/nlohmann")
+    endif()
+endif()
+
+# Find asio (usually header-only)
+find_package(asio QUIET)
+if(NOT asio_FOUND)
+    message(STATUS "Using system-installed asio headers")
+    set(ASIO_INCLUDE_DIRS "/usr/include")
+endif()
+
 # TSK library paths
 if(WIN32)
     # Windows: Use local TSK build
@@ -30,6 +53,8 @@ include_directories(
     ${TSK_INCLUDE_DIR}
     ${SQLite3_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}
+    ${NLOHMANN_JSON_INCLUDE_DIRS}
+    ${ASIO_INCLUDE_DIRS}
     # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
 )
 
@@ -46,10 +71,12 @@ set(SOURCES
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
     HTTPServer/HTTPserver.cpp
+    HTTPServer/SQLiteHelper.cpp
     AndroidAnalyzer/AndroidAnalyzerCore.cpp
     AndroidAnalyzer/AndroidDataParsers.cpp
     AndroidAnalyzer/AndroidSystemParsers.cpp
     AndroidAnalyzer/AndroidAnalysisDatabase.cpp
+    AndroidAnalyzer/BuildPropAnalyzer.cpp
 )
 
 # Create executable

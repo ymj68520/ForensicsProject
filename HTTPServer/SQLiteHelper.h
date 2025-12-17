@@ -6,34 +6,42 @@
 
 class SQLiteHelper {
 public:
-    static nlohmann::json get_file_summary(const std::string& db_path) {
-        sqlite3* db;
-        nlohmann::json result;
-        
-        if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
-            result["error"] = "Cannot open database";
-            return result;
-        }
+    // Original function
+    static nlohmann::json get_file_summary(const std::string& db_path);
 
-        const char* sql = "SELECT * FROM file_summary"; // 查询项目中的视图
-        sqlite3_stmt* stmt;
+    // Timeline Analysis Endpoints
+    static nlohmann::json get_comprehensive_timeline(const std::string& raw_db, const std::string& events_db,
+                                                     const std::string& start_time = "", const std::string& end_time = "");
+    static nlohmann::json get_file_activity_timeline(const std::string& raw_db, const std::string& events_db,
+                                                     const std::string& file_path = "", int64_t inode = -1);
+    static nlohmann::json get_suspicious_patterns(const std::string& raw_db, const std::string& events_db);
+    static nlohmann::json get_user_activity_analysis(const std::string& raw_db, const std::string& events_db);
 
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-            std::vector<nlohmann::json> rows;
-            while (sqlite3_step(stmt) == SQLITE_ROW) {
-                nlohmann::json row;
-                row["category"] = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
-                row["file_count"] = sqlite3_column_int(stmt, 1);
-                row["total_size"] = (long long)sqlite3_column_int64(stmt, 2);
-                rows.push_back(std::move(row));
-            }
-            result["summary"] = std::move(rows);
-        } else {
-            result["error"] = "Query failed: " + std::string(sqlite3_errmsg(db));
-        }
+    // File Analysis Endpoints
+    static nlohmann::json get_largest_files(const std::string& files_db, int limit = 50);
+    static nlohmann::json get_recent_files(const std::string& files_db, const std::string& hours = "24");
+    static nlohmann::json get_suspicious_files(const std::string& raw_db, const std::string& files_db);
+    static nlohmann::json get_duplicate_files(const std::string& files_db);
+    static nlohmann::json get_extensions_analysis(const std::string& files_db);
 
-        sqlite3_finalize(stmt);
-        sqlite3_close(db);
-        return result;
-    }
+    // Android Forensics Specialized Endpoints
+    static nlohmann::json get_android_communication_summary(const std::string& android_db);
+    static nlohmann::json get_android_app_usage(const std::string& android_db);
+    static nlohmann::json get_android_device_info(const std::string& android_db);
+    static nlohmann::json get_android_media_analysis(const std::string& android_db);
+
+    // Statistical Analysis Endpoints
+    static nlohmann::json get_overview_statistics(const std::string& raw_db, const std::string& files_db, const std::string& events_db);
+    static nlohmann::json get_file_distribution_analysis(const std::string& files_db);
+    static nlohmann::json get_activity_patterns(const std::string& events_db);
+    static nlohmann::json get_deleted_files_analysis(const std::string& raw_db);
+
+private:
+    // Helper methods
+    static sqlite3* open_database(const std::string& db_path, nlohmann::json& error_result);
+    static nlohmann::json execute_query(sqlite3* db, const std::string& sql);
+    static std::string format_timestamp(int64_t timestamp);
+    static int64_t parse_timestamp(const std::string& time_str);
+    static bool is_suspicious_extension(const std::string& ext);
+    static bool is_suspicious_path(const std::string& path);
 };
