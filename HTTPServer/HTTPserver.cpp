@@ -1245,17 +1245,22 @@ namespace forensics {
                 return res;
             }
 
+            // Get audit logs from AuditLog module
+            auto audit_logs = task_manager_.get_audit_logs(task_id);
+            
             json audit_entries = json::array();
-            for (const auto& entry : task.audit_log) {
+            for (const auto& entry : audit_logs) {
                 auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                     entry.timestamp.time_since_epoch()).count();
 
-                audit_entries.push_back({
+                json log_entry = {
+                    {"id", entry.id},
                     {"timestamp", timestamp},
                     {"action", entry.action},
                     {"details", entry.details},
                     {"user_id", entry.user_id}
-                });
+                };
+                audit_entries.push_back(log_entry);
             }
 
             json response = {

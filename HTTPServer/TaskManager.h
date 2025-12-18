@@ -21,6 +21,7 @@
 #include "../DatabaseManager/EventExtractor/EventExtractor.h"
 #include "../DatabaseManager/FileClassifier/FileClassifier.h"
 #include "../AndroidAnalyzer/AndroidAnalyzer.h"
+#include "../AuditLog/AuditLog.h"
 
 enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, CANCELLED };
 enum class TaskPriority { LOW = 0, NORMAL = 1, HIGH = 2, CRITICAL = 3 };
@@ -40,13 +41,6 @@ struct TaskDependency {
     bool required;
 };
 
-struct AuditLogEntry {
-    std::chrono::steady_clock::time_point timestamp;
-    std::string action;
-    std::string details;
-    std::string user_id;
-};
-
 struct AnalysisTask {
     std::string id;
     std::string image_path;
@@ -62,7 +56,6 @@ struct AnalysisTask {
     std::chrono::steady_clock::time_point completed_time;
     std::vector<TaskDependency> dependencies;
     std::vector<std::string> dependents;
-    std::vector<AuditLogEntry> audit_log;
     std::string result_cache;
     bool android_analyze;
     XFSMode xfs_mode;
@@ -80,9 +73,9 @@ struct AnalysisTask {
           priority(other.priority), progress(other.progress),
           created_time(other.created_time), started_time(other.started_time),
           completed_time(other.completed_time), dependencies(other.dependencies),
-          dependents(other.dependents), audit_log(other.audit_log),
-          result_cache(other.result_cache), android_analyze(other.android_analyze),
-          xfs_mode(other.xfs_mode), db_output_dir(other.db_output_dir),
+          dependents(other.dependents), result_cache(other.result_cache),
+          android_analyze(other.android_analyze), xfs_mode(other.xfs_mode),
+          db_output_dir(other.db_output_dir),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(other.error_details), metadata(other.metadata) {}
 
@@ -102,7 +95,6 @@ struct AnalysisTask {
             completed_time = other.completed_time;
             dependencies = other.dependencies;
             dependents = other.dependents;
-            audit_log = other.audit_log;
             result_cache = other.result_cache;
             android_analyze = other.android_analyze;
             xfs_mode = other.xfs_mode;
@@ -123,9 +115,9 @@ struct AnalysisTask {
           priority(other.priority), progress(std::move(other.progress)),
           created_time(other.created_time), started_time(other.started_time),
           completed_time(other.completed_time), dependencies(std::move(other.dependencies)),
-          dependents(std::move(other.dependents)), audit_log(std::move(other.audit_log)),
-          result_cache(std::move(other.result_cache)), android_analyze(other.android_analyze),
-          xfs_mode(other.xfs_mode), db_output_dir(std::move(other.db_output_dir)),
+          dependents(std::move(other.dependents)), result_cache(std::move(other.result_cache)),
+          android_analyze(other.android_analyze), xfs_mode(other.xfs_mode),
+          db_output_dir(std::move(other.db_output_dir)),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(std::move(other.error_details)), metadata(std::move(other.metadata)) {}
 
@@ -145,7 +137,6 @@ struct AnalysisTask {
             completed_time = other.completed_time;
             dependencies = std::move(other.dependencies);
             dependents = std::move(other.dependents);
-            audit_log = std::move(other.audit_log);
             result_cache = std::move(other.result_cache);
             android_analyze = other.android_analyze;
             xfs_mode = other.xfs_mode;
@@ -189,7 +180,6 @@ public:
         new_task.completed_time = now;
         new_task.dependencies = dependencies;
         new_task.dependents = {};
-        new_task.audit_log = {};
         new_task.result_cache = "";
         new_task.android_analyze = false;
         new_task.xfs_mode = XFSMode::Auto;
@@ -477,14 +467,13 @@ public:
     // Audit log
     void add_audit_log(const std::string& id, const std::string& action, const std::string& details, const std::string& user_id = "") {
         if (tasks_.count(id)) {
-            AuditLogEntry entry{
-                std::chrono::steady_clock::now(),
-                action,
-                details,
-                user_id
-            };
-            tasks_[id].audit_log.push_back(entry);
+            AuditLog::instance().log(id, action, details, user_id);
         }
+    }
+
+    // Get audit logs for a task
+    std::vector<AuditLogEntry> get_audit_logs(const std::string& id, int limit = 0, int offset = 0) {
+        return AuditLog::instance().getTaskLogs(id, limit, offset);
     }
 
     // Enhanced start_analysis with progress tracking and cancellation support

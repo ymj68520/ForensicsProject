@@ -77,6 +77,7 @@ set(SOURCES
     AndroidAnalyzer/AndroidSystemParsers.cpp
     AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     AndroidAnalyzer/BuildPropAnalyzer.cpp
+    AuditLog/AuditLog.cpp
 )
 
 # Create executable
