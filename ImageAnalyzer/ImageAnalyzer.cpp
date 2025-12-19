@@ -2,6 +2,7 @@
 #include "DatabaseManager/DatabaseManager.h"
 #include "XFSHelper.h"
 #include "NativeFilesystemWalker.h"
+#include "AuditLog/AuditLog.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
@@ -86,6 +87,7 @@ bool ImageAnalyzer::openImage() {
 	std::cout << "  Type: " << detectImageType() << std::endl;
 	std::cout << "  Size: " << imgInfo_->size << " bytes ("
 	          << (imgInfo_->size / (1024.0 * 1024 * 1024)) << " GB)" << std::endl;
+	AuditLog::instance().log("SYSTEM", "IMAGE_OPEN", "Opened image: " + imagePath_ + ", Type: " + detectImageType() + ", Size: " + std::to_string(imgInfo_->size) + " bytes");
 
 	return true;
 }
@@ -190,6 +192,7 @@ bool ImageAnalyzer::openFileSystem() {
 		std::cout << "  Block size: " << fsInfo_->block_size << std::endl;
 		std::cout << "  Block count: " << fsInfo_->block_count << std::endl;
 		std::cout << "  Root inode: " << fsInfo_->root_inum << std::endl;
+		AuditLog::instance().log("SYSTEM", "FS_OPEN", "Filesystem type: " + std::string(tsk_fs_type_toname(fsInfo_->ftype)) + ", Block size: " + std::to_string(fsInfo_->block_size));
 	}
 
 	return true;
@@ -283,6 +286,7 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 	}
 
 	std::cout << "Filesystem walk completed" << std::endl;
+	AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE", "Filesystem walk completed for: " + imagePath_);
 
 	return true;
 }
@@ -454,6 +458,7 @@ bool ImageAnalyzer::extractWithXFS(const std::string& dbPath) {
 	if (success) {
 		std::cout << "XFS extraction completed successfully" << std::endl;
 		std::cout << "Total files extracted: " << fileCount << std::endl;
+		AuditLog::instance().log("SYSTEM", "XFS_EXTRACTION_COMPLETE", "XFS extraction completed, files: " + std::to_string(fileCount));
 	} else {
 		std::cerr << "XFS extraction failed" << std::endl;
 	}
@@ -527,6 +532,7 @@ bool ImageAnalyzer::extractWithNativeMount(const std::string& dbPath) {
 	if (success) {
 		std::cout << "Native mount extraction completed successfully" << std::endl;
 		std::cout << "Total files extracted: " << fileCount << std::endl;
+		AuditLog::instance().log("SYSTEM", "NATIVE_EXTRACTION_COMPLETE", "Native mount extraction completed, files: " + std::to_string(fileCount));
 	} else {
 		std::cerr << "Native mount extraction failed" << std::endl;
 	}

@@ -6,9 +6,49 @@
 #include <iomanip>
 #include <cstring>
 
+// Global atomic flag for signal-based shutdown request
+// This is async-signal-safe since std::atomic<sig_atomic_t> is safe to access from signal handlers
+static volatile std::sig_atomic_t g_signal_received = 0;
+
+// Signal handler - ONLY set flag, do NOT call any non-async-signal-safe functions
+static void auditLogSignalHandler(int signum) {
+    g_signal_received = signum;
+}
+
+// Atexit handler for normal program termination
+static void auditLogAtexitHandler();
+
+// Global pointer for atexit handler access
+static AuditLog* g_audit_log_instance = nullptr;
+
+// Install signal handlers
+static void installSignalHandlers() {
+    static bool installed = false;
+    if (!installed) {
+        // Install signal handlers
+        std::signal(SIGINT, auditLogSignalHandler);
+        std::signal(SIGTERM, auditLogSignalHandler);
+#ifndef _WIN32
+        std::signal(SIGHUP, auditLogSignalHandler);
+#endif
+        // Register atexit handler
+        std::atexit(auditLogAtexitHandler);
+        installed = true;
+    }
+}
+
+// Atexit handler implementation
+static void auditLogAtexitHandler() {
+    if (g_audit_log_instance) {
+        g_audit_log_instance->flush();
+    }
+}
+
 // Singleton instance
 AuditLog& AuditLog::instance(const AuditLogConfig& config) {
     static AuditLog instance(config);
+    g_audit_log_instance = &instance;
+    installSignalHandlers();
     return instance;
 }
 
@@ -39,6 +79,8 @@ AuditLog::~AuditLog() {
         sqlite3_close(db_);
         db_ = nullptr;
     }
+    
+    g_audit_log_instance = nullptr;
 }
 
 // Initialize database
@@ -136,8 +178,9 @@ void AuditLog::addToWriteBuffer(const AuditLogEntry& entry) {
     std::lock_guard<std::mutex> lock(write_mutex_);
     write_buffer_.push_back(entry);
     
-    // Auto-flush if buffer size exceeds threshold
-    if (write_buffer_.size() >= config_.batch_size) {
+    // Always flush immediately if not using async write, or if buffer is full
+    // This ensures data is persisted promptly to prevent loss on crash
+    if (!config_.async_write || write_buffer_.size() >= config_.batch_size) {
         flushWriteBuffer();
     }
 }
@@ -561,7 +604,27 @@ void AuditLog::flushThreadFunc() {
     while (!stop_flush_thread_) {
         std::unique_lock<std::mutex> lock(flush_mtx_);
         flush_cv_.wait_for(lock, std::chrono::seconds(config_.flush_interval_seconds),
-                          [this]() { return stop_flush_thread_.load(); });
+                          [this]() { return stop_flush_thread_.load() || g_signal_received != 0; });
+        
+        // Check for signal - perform graceful shutdown
+        if (g_signal_received != 0) {
+            int sig = g_signal_received;
+            g_signal_received = 0;  // Reset for potential re-use
+            
+            // Flush all pending writes
+            {
+                std::lock_guard<std::mutex> write_lock(write_mutex_);
+                flushWriteBuffer();
+            }
+            
+            // Stop this thread
+            stop_flush_thread_ = true;
+            
+            // Restore default handler and re-raise signal
+            std::signal(sig, SIG_DFL);
+            std::raise(sig);
+            break;
+        }
         
         if (stop_flush_thread_) {
             break;

@@ -1,4 +1,5 @@
 #include "DatabaseManager.h"
+#include "../AuditLog/AuditLog.h"
 #include <iostream>
 #include <sstream>
 
@@ -16,6 +17,7 @@ bool DatabaseManager::initialize() {
 	int rc = sqlite3_open(dbPath_.c_str(), &db_);
 	if (rc != SQLITE_OK) {
 		std::cerr << "Cannot open database: " << sqlite3_errmsg(db_) << std::endl;
+		AuditLog::instance().log("SYSTEM", "DB_INIT_FAILED", "Failed to open database: " + dbPath_);
 		return false;
 	}
 
@@ -23,7 +25,11 @@ bool DatabaseManager::initialize() {
 	executeSQL("PRAGMA foreign_keys = ON;");
 
 	// Create tables
-	return createTables();
+	bool result = createTables();
+	if (result) {
+		AuditLog::instance().log("SYSTEM", "DB_INIT", "Database initialized: " + dbPath_);
+	}
+	return result;
 }
 
 bool DatabaseManager::createTables() {

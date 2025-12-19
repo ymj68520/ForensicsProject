@@ -1,4 +1,5 @@
 #include "FileClassifier.h"
+#include "../../AuditLog/AuditLog.h"
 #include <iostream>
 #include <algorithm>
 #include <cctype>
@@ -15,6 +16,8 @@ FileClassifier::~FileClassifier() {
 }
 
 bool FileClassifier::classifyAndExtract() {
+	AuditLog::instance().log("SYSTEM", "CLASSIFICATION_START", "Starting file classification from: " + sourceDbPath_);
+	
 	if (!openDatabases()) {
 		return false;
 	}
@@ -28,6 +31,7 @@ bool FileClassifier::classifyAndExtract() {
 	}
 
 	std::cout << "Files classified successfully" << std::endl;
+	AuditLog::instance().log("SYSTEM", "CLASSIFICATION_COMPLETE", "File classification completed to: " + fileDbPath_);
 
 	return true;
 }

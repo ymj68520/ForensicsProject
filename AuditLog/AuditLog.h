@@ -10,6 +10,8 @@
 #include <condition_variable>
 #include <chrono>
 #include <memory>
+#include <csignal>
+#include <cstdlib>
 #include <sqlite3.h>
 #include <nlohmann/json.hpp>
 
@@ -54,9 +56,9 @@ struct AuditLogEntry {
 struct AuditLogConfig {
     std::string db_path = "forensics_audit.db";              // Database file path
     size_t cache_size = 100;                                 // Number of entries in read cache
-    size_t batch_size = 50;                                  // Batch write threshold
-    int flush_interval_seconds = 5;                          // Auto-flush interval
-    bool async_write = true;                                 // Enable async write
+    size_t batch_size = 1;                                   // Batch write threshold (1 = immediate write for safety)
+    int flush_interval_seconds = 3;                          // Auto-flush interval (for async mode only)
+    bool async_write = false;                                // Disable async write by default for data safety
     size_t max_db_size_mb = 100;                             // Max database size before rotation
     int retention_days = 30;                                 // Log retention period
     bool enable_wal = true;                                  // Enable SQLite WAL mode

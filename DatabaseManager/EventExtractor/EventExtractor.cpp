@@ -1,4 +1,5 @@
 #include "EventExtractor.h"
+#include "../../AuditLog/AuditLog.h"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -14,6 +15,8 @@ EventExtractor::~EventExtractor() {
 }
 
 bool EventExtractor::extractEvents() {
+	AuditLog::instance().log("SYSTEM", "EVENT_EXTRACTION_START", "Starting event extraction from: " + sourceDbPath_);
+	
 	if (!openDatabases()) {
 		return false;
 	}
@@ -27,6 +30,7 @@ bool EventExtractor::extractEvents() {
 	}
 
 	std::cout << "Events extracted successfully" << std::endl;
+	AuditLog::instance().log("SYSTEM", "EVENT_EXTRACTION_COMPLETE", "Events extracted to: " + eventDbPath_);
 
 	return true;
 }

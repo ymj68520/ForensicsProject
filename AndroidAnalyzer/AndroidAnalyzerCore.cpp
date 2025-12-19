@@ -1,4 +1,5 @@
 #include "AndroidAnalyzer.h"
+#include "../AuditLog/AuditLog.h"
 
 // AndroidAnalyzer Core Implementation
 
@@ -16,6 +17,7 @@ bool AndroidAnalyzer::initialize() {
     fileExtractor_ = std::make_unique<FileExtractor>(imagePath_, dbManager_->getDbPath());
     if (!fileExtractor_->initialize()) {
         std::cerr << "Failed to initialize FileExtractor" << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_INIT_FAILED", "Failed to initialize Android analyzer for: " + imagePath_);
         return false;
     }
 
@@ -27,11 +29,13 @@ bool AndroidAnalyzer::initialize() {
         return false;
     }
 
+    AuditLog::instance().log("SYSTEM", "ANDROID_INIT", "Android analyzer initialized for: " + imagePath_);
     return true;
 }
 
 void AndroidAnalyzer::analyzeAndroidData() {
     std::cout << "Starting Android data analysis..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_START", "Starting Android data analysis: " + imagePath_);
 
     // Analyze system directory
     analyzeSystemDirectory(imagePath_ + "/system");
@@ -70,4 +74,5 @@ void AndroidAnalyzer::analyzeAndroidData() {
     extractAndParseDB("data/data/com.android.chrome/app_chrome/Default/History", "parseChromeHistory");
 
     std::cout << "Android data analysis completed." << std::endl;
+    AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_COMPLETE", "Android data analysis completed for: " + imagePath_);
 }

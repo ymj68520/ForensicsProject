@@ -49,9 +49,9 @@ struct AuditLogEntry {
 struct AuditLogConfig {
     std::string db_path = "forensics_audit.db";          // 数据库文件路径
     size_t cache_size = 100;                             // 读缓存条目数
-    size_t batch_size = 50;                              // 批量写入阈值
-    int flush_interval_seconds = 5;                      // 自动刷写间隔
-    bool async_write = true;                             // 启用异步写入
+    size_t batch_size = 1;                               // 批量写入阈值（1=立即写入，确保数据安全）
+    int flush_interval_seconds = 3;                      // 自动刷写间隔（仅异步模式）
+    bool async_write = false;                            // 默认禁用异步写入，确保数据安全
     size_t max_db_size_mb = 100;                         // 数据库大小限制
     int retention_days = 30;                             // 日志保留天数
     bool enable_wal = true;                              // 启用 WAL 模式
@@ -193,6 +193,73 @@ auto recent_logs = TaskManager::instance().get_audit_logs(task_id, 50);  // 最�
 - 内存占用极小（< 1MB），适合小内存设备
 - 通过 `get_audit_logs()` 动态查询日志
 
+## 模块集成
+
+AuditLog 模块已集成到 ForensicsProject 的所有核心模块中。以下是各模块的审计日志操作类型：
+
+### ImageAnalyzer
+
+| Action | 说明 | 触发时机 |
+|--------|------|----------|
+| `IMAGE_OPEN` | 镜像打开成功 | 成功打开磁盘镜像文件 |
+| `FS_OPEN` | 文件系统检测 | 成功识别文件系统类型 |
+| `EXTRACTION_COMPLETE` | 提取完成 | 文件系统遍历完成 |
+| `XFS_EXTRACTION_COMPLETE` | XFS 提取完成 | XFS 文件系统提取完成 |
+| `NATIVE_EXTRACTION_COMPLETE` | 原生挂载提取完成 | Linux 原生挂载提取完成 |
+
+### DatabaseManager
+
+| Action | 说明 | 触发时机 |
+|--------|------|----------|
+| `DB_INIT` | 数据库初始化成功 | 成功打开和初始化数据库 |
+| `DB_INIT_FAILED` | 数据库初始化失败 | 无法打开数据库文件 |
+
+### EventExtractor
+
+| Action | 说明 | 触发时机 |
+|--------|------|----------|
+| `EVENT_EXTRACTION_START` | 事件提取开始 | 开始从源数据库提取事件 |
+| `EVENT_EXTRACTION_COMPLETE` | 事件提取完成 | 事件提取成功完成 |
+
+### FileClassifier
+
+| Action | 说明 | 触发时机 |
+|--------|------|----------|
+| `CLASSIFICATION_START` | 文件分类开始 | 开始对文件进行分类 |
+| `CLASSIFICATION_COMPLETE` | 文件分类完成 | 文件分类成功完成 |
+
+### FileExtractor
+
+| Action | 说明 | 触发时机 |
+|--------|------|----------|
+| `EXTRACTOR_INIT` | 提取器初始化成功 | 文件提取器初始化完成 |
+| `EXTRACTOR_INIT_FAILED` | 提取器初始化失败 | 无法初始化文件提取器 |
+
+### AndroidAnalyzer
+
+| Action | 说明 | 触发时机 |
+|--------|------|----------|
+| `ANDROID_INIT` | Android 分析器初始化成功 | Android 分析器初始化完成 |
+| `ANDROID_INIT_FAILED` | Android 分析器初始化失败 | 无法初始化 Android 分析器 |
+| `ANDROID_ANALYSIS_START` | Android 数据分析开始 | 开始分析 Android 数据 |
+| `ANDROID_ANALYSIS_COMPLETE` | Android 数据分析完成 | Android 数据分析成功完成 |
+
+### 在自定义模块中使用
+
+```cpp
+#include "AuditLog/AuditLog.h"
+
+void myCustomFunction() {
+    // 记录操作开始
+    AuditLog::instance().log("SYSTEM", "CUSTOM_OP_START", "Starting custom operation");
+    
+    // 执行操作...
+    
+    // 记录操作完成
+    AuditLog::instance().log("SYSTEM", "CUSTOM_OP_COMPLETE", "Custom operation completed successfully");
+}
+```
+
 ## 使用示例
 
 ### 示例 1：基本使用
@@ -265,6 +332,20 @@ nlohmann::json report = {
 std::ofstream ofs("audit_report.json");
 ofs << report.dump(2);
 ofs.close();
+```
+
+### 示例 4：查询模块操作日志
+
+```cpp
+// 查询所有镜像打开操作
+auto image_opens = AuditLog::instance().getLogsByAction("IMAGE_OPEN");
+std::cout << "Total images opened: " << image_opens.size() << std::endl;
+
+// 查询最近的 Android 分析
+auto android_logs = AuditLog::instance().getLogsByAction("ANDROID_ANALYSIS_COMPLETE", 10, 0);
+for (const auto& log : android_logs) {
+    std::cout << "Analysis completed: " << log.details << std::endl;
+}
 ```
 
 ## 性能基准
@@ -381,6 +462,25 @@ ForensicsProject 开发团队
 
 ## 更新日志
 
+### v1.1.1 (2025-12-19) - 关键修复
+- **修复：程序终止时数据丢失问题**
+  - 修改默认配置：`batch_size=1`（立即写入）、`async_write=false`（同步模式）
+  - 添加信号处理器（SIGINT、SIGTERM、SIGHUP）确保优雅关闭
+  - 添加 `atexit` 处理器确保正常退出时刷新缓存
+- 现在每条日志都立即写入数据库，彻底防止数据丢失
+- 高性能场景可启用 `async_write=true` 并增大 `batch_size`
+
+### v1.1.0 (2025-12-19)
+- 扩展 AuditLog 到所有核心模块
+  - ImageAnalyzer：镜像打开、文件系统检测、提取完成
+  - DatabaseManager：数据库初始化
+  - EventExtractor：事件提取开始/完成
+  - FileClassifier：文件分类开始/完成
+  - FileExtractor：提取器初始化
+  - AndroidAnalyzer：Android 分析器初始化、分析开始/完成
+- 新增模块集成文档
+- 新增示例：查询模块操作日志
+
 ### v1.0.0 (2025-12-18)
 - 初始版本发布
 - SQLite 持久化存储
@@ -388,3 +488,4 @@ ForensicsProject 开发团队
 - 异步后台刷写
 - 日志轮转和清理
 - JSON/CSV 导出
+

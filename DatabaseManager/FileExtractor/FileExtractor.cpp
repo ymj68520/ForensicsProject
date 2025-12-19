@@ -1,4 +1,5 @@
 #include "FileExtractor.h"
+#include "../../AuditLog/AuditLog.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -35,6 +36,7 @@ bool FileExtractor::initialize() {
     if (!dbManager_->initialize()) {
         std::cerr << "Error: Cannot open database: " << dbPath_ << std::endl;
         std::cerr << "Please run analysis first to create the database." << std::endl;
+        AuditLog::instance().log("SYSTEM", "EXTRACTOR_INIT_FAILED", "Failed to initialize file extractor: " + dbPath_);
         return false;
     }
 
@@ -51,6 +53,7 @@ bool FileExtractor::initialize() {
     }
 
     std::cout << "File extractor initialized successfully" << std::endl;
+    AuditLog::instance().log("SYSTEM", "EXTRACTOR_INIT", "File extractor initialized: " + imagePath_);
     return true;
 }
 
