@@ -279,6 +279,17 @@ namespace forensics {
                     {"email_files", "Email files"},
                     {"system_files", "System files"},
                     {"encrypted_files", "Encrypted files"},
+                    {"os_config_files", "OS configuration files"},
+                    {"os_boot_files", "OS boot/kernel files"},
+                    {"os_libraries", "OS system libraries"},
+                    {"fs_journal", "Filesystem journal files"},
+                    {"fs_metadata", "Filesystem metadata"},
+                    {"log_files", "Log files"},
+                    {"cache_files", "Cache files"},
+                    {"temp_files", "Temporary files"},
+                    {"backup_files", "Backup files"},
+                    {"font_files", "Font files"},
+                    {"certificates", "Certificate and key files"},
                     {"unknown_files", "Unknown file types"}
                 }}
             };

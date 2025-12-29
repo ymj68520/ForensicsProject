@@ -21,6 +21,24 @@ enum class FileCategory {
 	EMAIL,
 	SYSTEM,
 	ENCRYPTED,
+	
+	// Operating System specific files
+	OS_CONFIG,      // OS configuration files (/etc/passwd, /etc/fstab)
+	OS_BOOT,        // Boot and kernel files (vmlinuz, initrd, grub.cfg)
+	OS_LIBRARY,     // System libraries (.so, .dylib, .a)
+	
+	// Filesystem specific files
+	FS_JOURNAL,     // Filesystem journal files
+	FS_METADATA,    // Filesystem metadata
+	
+	// Refined general categories
+	LOG_FILE,       // Log files
+	CACHE,          // Cache files
+	TEMP,           // Temporary files
+	BACKUP,         // Backup files
+	FONT,           // Font files
+	CERTIFICATE,    // Certificates and keys
+	
 	UNKNOWN
 };
 
@@ -31,6 +49,12 @@ public:
 	~FileClassifier();
 
 	bool classifyAndExtract();
+	
+	// Public advanced classification method for testing
+	FileCategory classifyFileAdvanced(const std::string& filename,
+	                                   const std::string& filepath,
+	                                   const std::string& extension,
+	                                   FileCategory basicCategory);
 
 private:
 	std::string sourceDbPath_;
@@ -39,6 +63,18 @@ private:
 	sqlite3* fileDb_;
 
 	std::unordered_map<std::string, FileCategory> extensionMap_;
+	bool useAdvancedClassification_;
+	
+	// Advanced classification data structures
+	std::vector<std::string> osConfigPaths_;
+	std::vector<std::string> bootPaths_;
+	std::vector<std::string> libraryPaths_;
+	std::vector<std::string> logPaths_;
+	std::vector<std::string> cachePaths_;
+	std::vector<std::string> tempPaths_;
+	std::vector<std::string> systemConfigFiles_;
+	std::vector<std::string> bootFiles_;
+	std::unordered_map<std::string, FileCategory> extendedExtensionMap_;
 
 	bool openDatabases();
 	bool createCategoryTables();
@@ -49,6 +85,23 @@ private:
 	std::string getCategoryTableName(FileCategory category);
 	void initializeExtensionMap();
 	void closeDatabases();
+	
+	// Advanced classification helper methods
+	bool isOSConfigPath(const std::string& path);
+	bool isBootPath(const std::string& path);
+	bool isLibraryPath(const std::string& path);
+	bool isLogPath(const std::string& path);
+	bool isCachePath(const std::string& path);
+	bool isTempPath(const std::string& path);
+	bool isSystemConfigFile(const std::string& filename);
+	bool isBootFile(const std::string& filename);
+	bool isLogFile(const std::string& filename);
+	bool isBackupFile(const std::string& filename);
+	void initializePathPatterns();
+	void initializeFilenamePatterns();
+	void initializeExtendedExtensionMap();
+	bool pathContains(const std::string& path, const std::vector<std::string>& patterns);
+	bool filenameMatches(const std::string& filename, const std::vector<std::string>& patterns);
 };
 
 #endif // FILE_CLASSIFIER_H

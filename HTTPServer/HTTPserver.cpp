@@ -1512,10 +1512,10 @@ namespace forensics {
                         {"tables", {"events", "creation_events", "modification_events", "access_events", "change_events", "deletion_events"}}
                     },
                     {
-                        {"type", "files"},
+                        {" type", "files"},
                         {"path", task.output_files_db},
-                        {"description", "Categorized files in 13 categories"},
-                        {"tables", {"files", "images", "videos", "audio", "documents", "archives", "executables", "databases", "source_code", "web_files", "email_files", "system_files", "encrypted_files", "unknown_files"}}
+                        {"description", "Categorized files in 24 categories"},
+                        {"tables", {"files", "images", "videos", "audio", "documents", "archives", "executables", "databases", "source_code", "web_files", "email_files", "system_files", "encrypted_files", "os_config_files", "os_boot_files", "os_libraries", "fs_journal", "fs_metadata", "log_files", "cache_files", "temp_files", "backup_files", "font_files", "certificates", "unknown_files"}}
                     }
                 }}
             };
@@ -1847,7 +1847,7 @@ namespace forensics {
                             {
                                 {"name", "files"},
                                 {"description", "Master table with all categorized files"},
-                                {"categories", {"images", "videos", "audio", "documents", "archives", "executables", "databases", "source_code", "web_files", "email_files", "system_files", "encrypted_files", "unknown_files"}}
+                                {"categories", {"images", "videos", "audio", "documents", "archives", "executables", "databases", "source_code", "web_files", "email_files", "system_files", "encrypted_files", "os_config_files", "os_boot_files", "os_libraries", "fs_journal", "fs_metadata", "log_files", "cache_files", "temp_files", "backup_files", "font_files", "certificates", "unknown_files"}}
                             }
                         }}
                     },

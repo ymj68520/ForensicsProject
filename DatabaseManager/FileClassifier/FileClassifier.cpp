@@ -7,8 +7,12 @@
 FileClassifier::FileClassifier(const std::string& sourceDbPath,
 	const std::string& fileDbPath)
 	: sourceDbPath_(sourceDbPath), fileDbPath_(fileDbPath),
-	sourceDb_(nullptr), fileDb_(nullptr) {
+	sourceDb_(nullptr), fileDb_(nullptr),
+	useAdvancedClassification_(true) {
 	initializeExtensionMap();
+	initializePathPatterns();
+	initializeFilenamePatterns();
+	initializeExtendedExtensionMap();
 }
 
 FileClassifier::~FileClassifier() {
@@ -97,6 +101,17 @@ bool FileClassifier::createCategoryTables() {
 		FileCategory::EMAIL,
 		FileCategory::SYSTEM,
 		FileCategory::ENCRYPTED,
+		FileCategory::OS_CONFIG,
+		FileCategory::OS_BOOT,
+		FileCategory::OS_LIBRARY,
+		FileCategory::FS_JOURNAL,
+		FileCategory::FS_METADATA,
+		FileCategory::LOG_FILE,
+		FileCategory::CACHE,
+		FileCategory::TEMP,
+		FileCategory::BACKUP,
+		FileCategory::FONT,
+		FileCategory::CERTIFICATE,
 		FileCategory::UNKNOWN
 	};
 
@@ -172,6 +187,28 @@ bool FileClassifier::createCategoryTables() {
         UNION ALL
         SELECT 'Encrypted', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM encrypted_files
         UNION ALL
+        SELECT 'OS Config', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM os_config_files
+        UNION ALL
+        SELECT 'OS Boot', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM os_boot_files
+        UNION ALL
+        SELECT 'OS Libraries', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM os_libraries
+        UNION ALL
+        SELECT 'FS Journal', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM fs_journal
+        UNION ALL
+        SELECT 'FS Metadata', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM fs_metadata
+        UNION ALL
+        SELECT 'Logs', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM log_files
+        UNION ALL
+        SELECT 'Cache', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM cache_files
+        UNION ALL
+        SELECT 'Temp', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM temp_files
+        UNION ALL
+        SELECT 'Backup', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM backup_files
+        UNION ALL
+        SELECT 'Fonts', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM font_files
+        UNION ALL
+        SELECT 'Certificates', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM certificates
+        UNION ALL
         SELECT 'Unknown', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM unknown_files;
     )";
 
@@ -194,10 +231,21 @@ bool FileClassifier::createCategoryTables() {
             UNION ALL SELECT extension, size FROM email_files
             UNION ALL SELECT extension, size FROM system_files
             UNION ALL SELECT extension, size FROM encrypted_files
+            UNION ALL SELECT extension, size FROM os_config_files
+            UNION ALL SELECT extension, size FROM os_boot_files
+            UNION ALL SELECT extension, size FROM os_libraries
+            UNION ALL SELECT extension, size FROM fs_journal
+            UNION ALL SELECT extension, size FROM fs_metadata
+            UNION ALL SELECT extension, size FROM log_files
+            UNION ALL SELECT extension, size FROM cache_files
+            UNION ALL SELECT extension, size FROM temp_files
+            UNION ALL SELECT extension, size FROM backup_files
+            UNION ALL SELECT extension, size FROM font_files
+            UNION ALL SELECT extension, size FROM certificates
             UNION ALL SELECT extension, size FROM unknown_files
         )
         GROUP BY extension
-        ORDER BY count DESC;
+		ORDER BY count DESC;
     )";
 
 	sqlite3_exec(fileDb_, createExtensionView.c_str(), nullptr, nullptr, nullptr);
@@ -228,6 +276,28 @@ bool FileClassifier::createCategoryTables() {
         SELECT 'System Files', name, path, size, extension FROM system_files WHERE is_deleted = 1
         UNION ALL
         SELECT 'Encrypted', name, path, size, extension FROM encrypted_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'OS Config', name, path, size, extension FROM os_config_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'OS Boot', name, path, size, extension FROM os_boot_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'OS Libraries', name, path, size, extension FROM os_libraries WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'FS Journal', name, path, size, extension FROM fs_journal WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'FS Metadata', name, path, size, extension FROM fs_metadata WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'Logs', name, path, size, extension FROM log_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'Cache', name, path, size, extension FROM cache_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'Temp', name, path, size, extension FROM temp_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'Backup', name, path, size, extension FROM backup_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'Fonts', name, path, size, extension FROM font_files WHERE is_deleted = 1
+        UNION ALL
+        SELECT 'Certificates', name, path, size, extension FROM certificates WHERE is_deleted = 1
         UNION ALL
         SELECT 'Unknown', name, path, size, extension FROM unknown_files WHERE is_deleted = 1;
     )";
@@ -271,6 +341,18 @@ bool FileClassifier::classifyFiles() {
 
 		// Determine category
 		FileCategory category = determineCategory(name, type);
+		
+		// Apply advanced classification if enabled
+		if (useAdvancedClassification_) {
+			std::string extension;
+			size_t dotPos = name.find_last_of('.');
+			if (dotPos != std::string::npos) {
+				extension = name.substr(dotPos + 1);
+				std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+			}
+			category = classifyFileAdvanced(name, path, extension, category);
+		}
+		
 		categoryCounts[category]++;
 
 		// Get extension
@@ -375,6 +457,17 @@ std::string FileClassifier::getCategoryName(FileCategory category) {
 	case FileCategory::EMAIL: return "Email Files";
 	case FileCategory::SYSTEM: return "System Files";
 	case FileCategory::ENCRYPTED: return "Encrypted Files";
+	case FileCategory::OS_CONFIG: return "OS Config Files";
+	case FileCategory::OS_BOOT: return "OS Boot Files";
+	case FileCategory::OS_LIBRARY: return "OS Libraries";
+	case FileCategory::FS_JOURNAL: return "FS Journal Files";
+	case FileCategory::FS_METADATA: return "FS Metadata";
+	case FileCategory::LOG_FILE: return "Log Files";
+	case FileCategory::CACHE: return "Cache Files";
+	case FileCategory::TEMP: return "Temp Files";
+	case FileCategory::BACKUP: return "Backup Files";
+	case FileCategory::FONT: return "Font Files";
+	case FileCategory::CERTIFICATE: return "Certificates";
 	case FileCategory::UNKNOWN: return "Unknown Files";
 	default: return "Unknown";
 	}
@@ -394,6 +487,17 @@ std::string FileClassifier::getCategoryTableName(FileCategory category) {
 	case FileCategory::EMAIL: return "email_files";
 	case FileCategory::SYSTEM: return "system_files";
 	case FileCategory::ENCRYPTED: return "encrypted_files";
+	case FileCategory::OS_CONFIG: return "os_config_files";
+	case FileCategory::OS_BOOT: return "os_boot_files";
+	case FileCategory::OS_LIBRARY: return "os_libraries";
+	case FileCategory::FS_JOURNAL: return "fs_journal";
+	case FileCategory::FS_METADATA: return "fs_metadata";
+	case FileCategory::LOG_FILE: return "log_files";
+	case FileCategory::CACHE: return "cache_files";
+	case FileCategory::TEMP: return "temp_files";
+	case FileCategory::BACKUP: return "backup_files";
+	case FileCategory::FONT: return "font_files";
+	case FileCategory::CERTIFICATE: return "certificates";
 	case FileCategory::UNKNOWN: return "unknown_files";
 	default: return "unknown_files";
 	}
@@ -526,4 +630,375 @@ void FileClassifier::closeDatabases() {
 		sqlite3_close(fileDb_);
 		fileDb_ = nullptr;
 	}
+}
+// Advanced classification method implementations
+
+FileCategory FileClassifier::classifyFileAdvanced(const std::string& filename,
+                                                   const std::string& filepath,
+                                                   const std::string& extension,
+                                                   FileCategory basicCategory) {
+    // Priority 1: Check filename patterns for known system files
+    if (isSystemConfigFile(filename)) {
+        return FileCategory::OS_CONFIG;
+    }
+    
+    if (isBootFile(filename)) {
+        return FileCategory::OS_BOOT;
+    }
+    
+    if (isLogFile(filename)) {
+        return FileCategory::LOG_FILE;
+    }
+    
+    if (isBackupFile(filename)) {
+        return FileCategory::BACKUP;
+    }
+    
+    // Priority 2: Check path patterns
+    if (isOSConfigPath(filepath)) {
+        return FileCategory::OS_CONFIG;
+    }
+    
+    if (isBootPath(filepath)) {
+        return FileCategory::OS_BOOT;
+    }
+    
+    if (isLibraryPath(filepath)) {
+        return FileCategory::OS_LIBRARY;
+    }
+    
+    if (isLogPath(filepath)) {
+        return FileCategory::LOG_FILE;
+    }
+    
+    if (isCachePath(filepath)) {
+        return FileCategory::CACHE;
+    }
+    
+    if (isTempPath(filepath)) {
+        return FileCategory::TEMP;
+    }
+    
+    // Priority 3: Check extended extension map
+    auto it = extendedExtensionMap_.find(extension);
+    if (it != extendedExtensionMap_.end()) {
+        return it->second;
+    }
+    
+    // Priority 4: Return basic category if not UNKNOWN
+    if (basicCategory != FileCategory::UNKNOWN) {
+        return basicCategory;
+    }
+    
+    // Default: UNKNOWN
+    return FileCategory::UNKNOWN;
+}
+
+bool FileClassifier::isOSConfigPath(const std::string& path) {
+    return pathContains(path, osConfigPaths_);
+}
+
+bool FileClassifier::isBootPath(const std::string& path) {
+    return pathContains(path, bootPaths_);
+}
+
+bool FileClassifier::isLibraryPath(const std::string& path) {
+    return pathContains(path, libraryPaths_);
+}
+
+bool FileClassifier::isLogPath(const std::string& path) {
+    return pathContains(path, logPaths_);
+}
+
+bool FileClassifier::isCachePath(const std::string& path) {
+    return pathContains(path, cachePaths_);
+}
+
+bool FileClassifier::isTempPath(const std::string& path) {
+    return pathContains(path, tempPaths_);
+}
+
+bool FileClassifier::isSystemConfigFile(const std::string& filename) {
+    return filenameMatches(filename, systemConfigFiles_);
+}
+
+bool FileClassifier::isBootFile(const std::string& filename) {
+    return filenameMatches(filename, bootFiles_);
+}
+
+bool FileClassifier::isLogFile(const std::string& filename) {
+    std::string lower = filename;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    
+    // Check if ends with .log
+    if (lower.size() > 4 && lower.substr(lower.size() - 4) == ".log") {
+        return true;
+    }
+    
+    // Check common log file names
+    std::vector<std::string> logPatterns = {
+        "syslog", "messages", "dmesg", "kern.log", "auth.log",
+        "debug", "error", "access", "audit"
+    };
+    
+    for (const auto& pattern : logPatterns) {
+        if (lower.find(pattern) != std::string::npos) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+bool FileClassifier::isBackupFile(const std::string& filename) {
+    std::string lower = filename;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    
+    // Check backup patterns
+    if (lower.find("backup") != std::string::npos) return true;
+    if (lower.find(".bak") != std::string::npos) return true;
+    if (lower.find(".old") != std::string::npos) return true;
+    if (lower.find(".orig") != std::string::npos) return true;
+    if (!filename.empty() && filename.back() == '~') return true;
+    
+    return false;
+}
+
+void FileClassifier::initializePathPatterns() {
+    // OS configuration paths
+    osConfigPaths_ = {
+        "/etc/",
+        "/etc/default/",
+        "/etc/sysconfig/",
+        "/etc/conf.d/",
+        "/etc/systemd/",
+        "/etc/init.d/",
+        "/etc/rc.d/",
+        "/etc/security/",
+        "/etc/pam.d/",
+        "/etc/ssh/",
+        "/etc/ssl/",
+        "/etc/X11/",
+        "/etc/network/",
+        "/etc/NetworkManager/",
+        "/etc/modprobe.d/",
+        "/etc/modules-load.d/",
+        "/etc/udev/",
+        "/etc/profile.d/",
+        "/etc/bash_completion.d/",
+        "/etc/apt/",
+        "/etc/yum.repos.d/",
+        "/etc/zypp/",
+        "/Library/Preferences/",
+        "/private/etc/",
+        "C:/Windows/System32/config/",
+        "C:/Windows/System32/drivers/etc/"
+    };
+    
+    // Boot paths
+    bootPaths_ = {
+        "/boot/",
+        "/boot/grub/",
+        "/boot/grub2/",
+        "/boot/efi/",
+        "/boot/loader/",
+        "/sys/firmware/efi/",
+        "/System/Library/CoreServices/",
+        "C:/Boot/",
+        "C:/Windows/Boot/"
+    };
+    
+    // Library paths
+    libraryPaths_ = {
+        "/lib/",
+        "/lib32/",
+        "/lib64/",
+        "/libx32/",
+        "/usr/lib/",
+        "/usr/lib32/",
+        "/usr/lib64/",
+        "/usr/local/lib/",
+        "/opt/lib/",
+        "/System/Library/",
+        "/Library/",
+        "C:/Windows/System32/",
+        "C:/Windows/SysWOW64/"
+    };
+    
+    // Log paths
+    logPaths_ = {
+        "/var/log/",
+        "/var/log/journal/",
+        "/var/log/audit/",
+        "/var/log/sa/",
+        "/var/log/sysstat/",
+        "/var/log/cups/",
+        "/var/log/apache2/",
+        "/var/log/nginx/",
+        "/var/log/mysql/",
+        "/Library/Logs/",
+        "C:/Windows/Logs/",
+        "C:/ProgramData/Logs/"
+    };
+    
+    // Cache paths
+    cachePaths_ = {
+        "/var/cache/",
+        "/var/tmp/",
+        "/.cache/",
+        "/tmp/.cache/",
+        "/Library/Caches/",
+        "C:/Windows/Temp/",
+        "C:/Temp/"
+    };
+    
+    // Temp paths
+    tempPaths_ = {
+        "/tmp/",
+        "/var/tmp/",
+        "/run/",
+        "/dev/shm/",
+        "/.tmp/",
+        "/private/tmp/",
+        "/private/var/tmp/",
+        "C:/Temp/",
+        "C:/Windows/Temp/"
+    };
+}
+
+void FileClassifier::initializeFilenamePatterns() {
+    // System configuration files
+    systemConfigFiles_ = {
+        "passwd", "shadow", "group", "gshadow",
+        "fstab", "mtab", "hosts", "hostname", "resolv.conf",
+        "network", "interfaces", "netplan", "nsswitch.conf",
+        "profile", "bashrc", "bash_profile", "zshrc",
+        "sudoers", "sudoers.d", "security", "login.defs",
+        "sysctl.conf", "sysctl.d", "modules", "modprobe.conf",
+        "crontab", "anacrontab", "at.allow", "at.deny",
+        "rc.local", "inittab", "systemd",
+        "sources.list", "apt.conf", "yum.conf", "dnf.conf", 
+        "pacman.conf", "zypper.conf",
+        "sshd_config", "ssh_config", "httpd.conf", "nginx.conf",
+        "mysql", "postgresql.conf", "redis.conf",
+        "launchd.conf", "plist",
+        "boot.ini", "ntldr", "bootmgr", "bcd"
+    };
+    
+    // Boot and kernel files
+    bootFiles_ = {
+        "vmlinuz", "vmlinux", "bzImage", "kernel",
+        "initrd", "initramfs", "initrd.img",
+        "grub.cfg", "grub.conf", "menu.lst",
+        "System.map", "config-",
+        "efi", "bootx64.efi", "bootia32.efi",
+        "boot.img", "core.img",
+        "boot.efi", "mach_kernel",
+        "ntldr", "bootmgr", "winload.exe", "winresume.exe"
+    };
+}
+
+void FileClassifier::initializeExtendedExtensionMap() {
+    // Font files
+    std::vector<std::string> fontExts = {
+        "ttf", "otf", "woff", "woff2", "eot", "fon", "fnt",
+        "ttc", "dfont", "suit", "sfnt", "pfa", "pfb"
+    };
+    for (const auto& ext : fontExts) {
+        extendedExtensionMap_[ext] = FileCategory::FONT;
+    }
+    
+    // Certificate and key files
+    std::vector<std::string> certExts = {
+        "pem", "crt", "cer", "der", "key", "pub",
+        "p12", "pfx", "p7b", "p7c", "p7s",
+        "csr", "crl", "spc", "keystore", "jks"
+    };
+    for (const auto& ext : certExts) {
+        extendedExtensionMap_[ext] = FileCategory::CERTIFICATE;
+    }
+    
+    // System library files
+    std::vector<std::string> libExts = {
+        "so", "a", "dylib", "framework",
+        "ko", "o"
+    };
+    for (const auto& ext : libExts) {
+        extendedExtensionMap_[ext] = FileCategory::OS_LIBRARY;
+    }
+    
+    // Log files
+    std::vector<std::string> logExts = {
+        "log", "journal"
+    };
+    for (const auto& ext : logExts) {
+        extendedExtensionMap_[ext] = FileCategory::LOG_FILE;
+    }
+    
+    // Backup files
+    std::vector<std::string> backupExts = {
+        "bak", "backup", "old", "orig", "save", "~"
+    };
+    for (const auto& ext : backupExts) {
+        extendedExtensionMap_[ext] = FileCategory::BACKUP;
+    }
+    
+    // Cache files
+    std::vector<std::string> cacheExts = {
+        "cache", "cached"
+    };
+    for (const auto& ext : cacheExts) {
+        extendedExtensionMap_[ext] = FileCategory::CACHE;
+    }
+    
+    // Temp files
+    std::vector<std::string> tempExts = {
+        "tmp", "temp", "swp", "swo", "~", "bak"
+    };
+    for (const auto& ext : tempExts) {
+        extendedExtensionMap_[ext] = FileCategory::TEMP;
+    }
+}
+
+bool FileClassifier::pathContains(const std::string& path, 
+                                  const std::vector<std::string>& patterns) {
+    std::string lowerPath = path;
+    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+    
+    for (const auto& pattern : patterns) {
+        std::string lowerPattern = pattern;
+        std::transform(lowerPattern.begin(), lowerPattern.end(), lowerPattern.begin(), ::tolower);
+        
+        if (lowerPath.find(lowerPattern) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FileClassifier::filenameMatches(const std::string& filename,
+                                     const std::vector<std::string>& patterns) {
+    std::string lowerFilename = filename;
+    std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
+    
+    for (const auto& pattern : patterns) {
+        std::string lowerPattern = pattern;
+        std::transform(lowerPattern.begin(), lowerPattern.end(), lowerPattern.begin(), ::tolower);
+        
+        // Check exact match
+        if (lowerFilename == lowerPattern) {
+            return true;
+        }
+        
+        // Check if filename starts with pattern
+        if (lowerFilename.find(lowerPattern) == 0) {
+            return true;
+        }
+        
+        // Check if filename contains pattern
+        if (lowerFilename.find(lowerPattern) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
 }
