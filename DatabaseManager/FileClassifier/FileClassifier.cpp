@@ -649,6 +649,19 @@ FileCategory FileClassifier::classifyFileAdvanced(const std::string& filename,
     if (isLogFile(filename)) {
         return FileCategory::LOG_FILE;
     }
+
+    // Check for NTFS Metadata files
+    if (filename.size() > 0 && filename[0] == '$') {
+        if (filename == "$LogFile" || filename.find("$TxfLog") != std::string::npos) {
+            return FileCategory::FS_JOURNAL;
+        }
+        if (filename == "$MFT" || filename == "$MFTMirr" || filename == "$Bitmap" || 
+            filename == "$Boot" || filename == "$Volume" || filename == "$AttrDef" ||
+            filename == "$BadClus" || filename == "$Secure" || filename == "$UpCase" ||
+            filename == "$Extend") {
+            return FileCategory::FS_METADATA;
+        }
+    }
     
     if (isBackupFile(filename)) {
         return FileCategory::BACKUP;
@@ -792,7 +805,9 @@ void FileClassifier::initializePathPatterns() {
         "/Library/Preferences/",
         "/private/etc/",
         "C:/Windows/System32/config/",
-        "C:/Windows/System32/drivers/etc/"
+        "C:/Windows/System32/drivers/etc/",
+        "Windows/System32/config/",
+        "Windows/System32/drivers/etc/"
     };
     
     // Boot paths
@@ -805,7 +820,9 @@ void FileClassifier::initializePathPatterns() {
         "/sys/firmware/efi/",
         "/System/Library/CoreServices/",
         "C:/Boot/",
-        "C:/Windows/Boot/"
+        "C:/Windows/Boot/",
+        "Boot/",
+        "Windows/Boot/"
     };
     
     // Library paths
@@ -822,7 +839,9 @@ void FileClassifier::initializePathPatterns() {
         "/System/Library/",
         "/Library/",
         "C:/Windows/System32/",
-        "C:/Windows/SysWOW64/"
+        "C:/Windows/SysWOW64/",
+        "Windows/System32/",
+        "Windows/SysWOW64/"
     };
     
     // Log paths
@@ -838,7 +857,9 @@ void FileClassifier::initializePathPatterns() {
         "/var/log/mysql/",
         "/Library/Logs/",
         "C:/Windows/Logs/",
-        "C:/ProgramData/Logs/"
+        "C:/ProgramData/Logs/",
+        "Windows/Logs/",
+        "ProgramData/Logs/"
     };
     
     // Cache paths
@@ -849,7 +870,9 @@ void FileClassifier::initializePathPatterns() {
         "/tmp/.cache/",
         "/Library/Caches/",
         "C:/Windows/Temp/",
-        "C:/Temp/"
+        "C:/Temp/",
+        "Windows/Temp/",
+        "Temp/"
     };
     
     // Temp paths
@@ -862,7 +885,9 @@ void FileClassifier::initializePathPatterns() {
         "/private/tmp/",
         "/private/var/tmp/",
         "C:/Temp/",
-        "C:/Windows/Temp/"
+        "C:/Windows/Temp/",
+        "Windows/Temp/",
+        "Temp/"
     };
 }
 
