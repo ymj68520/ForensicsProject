@@ -445,15 +445,31 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 
 	// Check for NTFS Metadata files
 	if (filename.size() > 0 && filename[0] == '$') {
-		if (filename == "$LogFile" || filename.find("$TxfLog") != std::string::npos) {
+		// Journal files
+		if (filename == "$LogFile" || filename.find("$TxfLog") != std::string::npos ||
+		    filename == "$Tops") {
 			return FileCategory::FS_JOURNAL;
 		}
+		// Metadata files
 		if (filename == "$MFT" || filename == "$MFTMirr" || filename == "$Bitmap" || 
 			filename == "$Boot" || filename == "$Volume" || filename == "$AttrDef" ||
 			filename == "$BadClus" || filename == "$Secure" || filename == "$UpCase" ||
-			filename == "$Extend") {
+			filename == "$Extend" || filename == "$ObjId" || filename == "$Quota" ||
+			filename == "$Reparse" || filename == "$RmMetadata" || filename == "$I30" ||
+			filename == "$Repair") {
 			return FileCategory::FS_METADATA;
 		}
+	}
+	
+	// Check for ext4/Linux filesystem metadata
+	if (filename == "lost+found" || filename == ".journal" || 
+	    filename.find("journal") == 0) {
+		return FileCategory::FS_METADATA;
+	}
+	
+	// Check for additional boot files
+	if (filename == "BOOTNXT" || filename == "bootnxt") {
+		return FileCategory::OS_BOOT;
 	}
 	
 	if (isBackupFile(filename)) {
@@ -560,7 +576,11 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> imageExts = {
 		"jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "ico", "svg",
 		"webp", "raw", "cr2", "nef", "arw", "dng", "psd", "ai", "eps",
-		"heic", "heif", "jfif", "exif"
+		"heic", "heif", "jfif", "exif",
+		// Modern formats
+		"avif", "jxl", "webp2", "apng",
+		// RAW formats
+		"orf", "rw2", "raf", "3fr", "dcr", "k25", "kdc", "mrw", "nrw", "pef", "sr2", "srf", "x3f"
 	};
 	for (const auto& ext : imageExts) {
 		extensionMap_[ext] = FileCategory::IMAGE;
@@ -570,7 +590,11 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> videoExts = {
 		"mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg",
 		"mpeg", "3gp", "f4v", "swf", "vob", "ogv", "m2ts", "mts", "ts",
-		"divx", "xvid", "rm", "rmvb", "asf"
+		"divx", "xvid", "rm", "rmvb", "asf",
+		// Professional formats
+		"mxf", "prores", "dnxhd", "dnxhr",
+		// Additional formats
+		"mpe", "m2v", "m4p", "qt", "yuv"
 	};
 	for (const auto& ext : videoExts) {
 		extensionMap_[ext] = FileCategory::VIDEO;
@@ -579,7 +603,11 @@ void FileClassifier::initializeExtensionMap() {
 	// Audio files
 	std::vector<std::string> audioExts = {
 		"mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "ape",
-		"alac", "aiff", "au", "mid", "midi", "ra", "rm", "amr", "ac3"
+		"alac", "aiff", "au", "mid", "midi", "ra", "rm", "amr", "ac3",
+		// High-fidelity formats
+		"dsd", "dsf", "dff",
+		// Additional formats
+		"mka", "oga", "mogg", "pcm", "aif", "aifc", "caf", "sd2"
 	};
 	for (const auto& ext : audioExts) {
 		extensionMap_[ext] = FileCategory::AUDIO;
@@ -589,7 +617,15 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> documentExts = {
 		"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods",
 		"odp", "rtf", "txt", "csv", "log", "tex", "wpd", "wps", "pages",
-		"numbers", "key", "epub", "mobi", "azw", "djvu", "fb2"
+		"numbers", "key", "epub", "mobi", "azw", "djvu", "fb2",
+		// Markup languages
+		"md", "markdown", "rst", "adoc", "asciidoc",
+		// Office macro-enabled
+		"docm", "xlsm", "pptm",
+		// LaTeX
+		"bib", "aux", "bbl", "blg",
+		// Other
+		"msg", "oft"
 	};
 	for (const auto& ext : documentExts) {
 		extensionMap_[ext] = FileCategory::DOCUMENT;
@@ -599,7 +635,11 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> archiveExts = {
 		"zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "dmg",
 		"pkg", "deb", "rpm", "cab", "msi", "jar", "war", "ear", "apk",
-		"tgz", "tbz2", "lz", "lzma", "z", "arj", "ace"
+		"tgz", "tbz2", "lz", "lzma", "z", "arj", "ace",
+		// Modern compression
+		"zst", "zstd", "lz4", "br", "sz", "xar",
+		// Additional formats
+		"cpio", "shar", "lha", "lzh", "zoo", "arc"
 	};
 	for (const auto& ext : archiveExts) {
 		extensionMap_[ext] = FileCategory::ARCHIVE;
@@ -609,7 +649,13 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> executableExts = {
 		"exe", "dll", "so", "dylib", "app", "bin", "com", "bat", "cmd",
 		"sh", "bash", "ps1", "vbs", "wsf", "msi", "scr", "cpl", "sys",
-		"drv", "ocx", "elf", "out", "run"
+		"drv", "ocx", "elf", "out", "run",
+		// Linux packages
+		"appimage", "flatpak", "snap",
+		// Windows modern
+		"msix", "appx", "appxbundle",
+		// macOS
+		"dmg", "pkg"
 	};
 	for (const auto& ext : executableExts) {
 		extensionMap_[ext] = FileCategory::EXECUTABLE;
@@ -618,7 +664,9 @@ void FileClassifier::initializeExtensionMap() {
 	// Database files
 	std::vector<std::string> databaseExts = {
 		"db", "sqlite", "sqlite3", "mdb", "accdb", "dbf", "sql", "bak",
-		"mdf", "ldf", "frm", "ibd", "pdb", "fdb", "gdb", "nsf"
+		"mdf", "ldf", "frm", "ibd", "pdb", "fdb", "gdb", "nsf",
+		// NoSQL and modern databases
+		"realm", "leveldb", "rocksdb", "bdb"
 	};
 	for (const auto& ext : databaseExts) {
 		extensionMap_[ext] = FileCategory::DATABASE;
@@ -629,7 +677,11 @@ void FileClassifier::initializeExtensionMap() {
 		"c", "cpp", "cc", "cxx", "h", "hpp", "java", "py", "js", "ts",
 		"php", "rb", "go", "rs", "swift", "kt", "scala", "pl", "lua",
 		"r", "m", "mm", "cs", "vb", "asm", "s", "pas", "f", "f90",
-		"sql", "sh", "bash", "ps1", "bat", "cmd", "makefile", "cmake"
+		"sql", "sh", "bash", "ps1", "bat", "cmd", "makefile", "cmake",
+		// Modern languages
+		"vue", "jsx", "tsx", "dart", "zig", "v", "nim", "crystal",
+		// Additional
+		"coffee", "elm", "erl", "ex", "exs", "fs", "fsx", "groovy", "hx"
 	};
 	for (const auto& ext : sourceCodeExts) {
 		extensionMap_[ext] = FileCategory::SOURCE_CODE;
@@ -665,7 +717,9 @@ void FileClassifier::initializeExtensionMap() {
 	// Encrypted files
 	std::vector<std::string> encryptedExts = {
 		"gpg", "pgp", "asc", "enc", "encrypted", "aes", "crypt", "locked",
-		"secure", "p12", "pfx", "pem", "key", "crt", "cer", "der"
+		"secure", "p12", "pfx", "pem", "key", "crt", "cer", "der",
+		// Modern encryption
+		"age", "luks"
 	};
 	for (const auto& ext : encryptedExts) {
 		extensionMap_[ext] = FileCategory::ENCRYPTED;
@@ -765,6 +819,8 @@ void FileClassifier::initializePathPatterns() {
         "/etc/sysconfig/",
         "/etc/conf.d/",
         "/etc/systemd/",
+        "/etc/systemd/system/",
+        "/etc/systemd/user/",
         "/etc/init.d/",
         "/etc/rc.d/",
         "/etc/security/",
@@ -782,12 +838,29 @@ void FileClassifier::initializePathPatterns() {
         "/etc/apt/",
         "/etc/yum.repos.d/",
         "/etc/zypp/",
+        "/etc/cron.d/",
+        "/etc/cron.daily/",
+        "/etc/cron.hourly/",
+        "/etc/cron.weekly/",
+        "/etc/cron.monthly/",
+        "/etc/sudoers.d/",
+        "/etc/nginx/",
+        "/etc/apache2/",
+        "/etc/httpd/",
+        "/etc/mysql/",
+        "/etc/postgresql/",
+        "/etc/redis/",
+        "/etc/docker/",
+        "/etc/kubernetes/",
         "/Library/Preferences/",
+        "/Library/Application Support/",
         "/private/etc/",
         "C:/Windows/System32/config/",
         "C:/Windows/System32/drivers/etc/",
+        "C:/ProgramData/",
         "Windows/System32/config/",
-        "Windows/System32/drivers/etc/"
+        "Windows/System32/drivers/etc/",
+        "ProgramData/"
     };
     
     // Boot paths
@@ -874,32 +947,57 @@ void FileClassifier::initializePathPatterns() {
 void FileClassifier::initializeFilenamePatterns() {
     // System configuration files
     systemConfigFiles_ = {
+        // User/Group management
         "passwd", "shadow", "group", "gshadow",
-        "fstab", "mtab", "hosts", "hostname", "resolv.conf",
-        "network", "interfaces", "netplan", "nsswitch.conf",
-        "profile", "bashrc", "bash_profile", "zshrc",
-        "sudoers", "sudoers.d", "security", "login.defs",
-        "sysctl.conf", "sysctl.d", "modules", "modprobe.conf",
+        // Filesystem
+        "fstab", "mtab", "crypttab",
+        // Network
+        "hosts", "hostname", "resolv.conf", "network", "interfaces", "netplan", "nsswitch.conf",
+        // Shell configuration
+        "profile", "bashrc", "bash_profile", "zshrc", "zprofile", ".env",
+        // Security
+        "sudoers", "sudoers.d", "security", "login.defs", "pam.conf",
+        // System control
+        "sysctl.conf", "sysctl.d", "modules", "modprobe.conf", "modules.conf",
+        // Scheduling
         "crontab", "anacrontab", "at.allow", "at.deny",
+        // Init systems
         "rc.local", "inittab", "systemd",
-        "sources.list", "apt.conf", "yum.conf", "dnf.conf", 
-        "pacman.conf", "zypper.conf",
-        "sshd_config", "ssh_config", "httpd.conf", "nginx.conf",
-        "mysql", "postgresql.conf", "redis.conf",
+        // Package managers
+        "sources.list", "apt.conf", "yum.conf", "dnf.conf", "pacman.conf", "zypper.conf",
+        // Services
+        "sshd_config", "ssh_config", "httpd.conf", "nginx.conf", "apache2.conf",
+        "mysql", "my.cnf", "postgresql.conf", "redis.conf", "mongod.conf",
+        // macOS
         "launchd.conf", "plist",
-        "boot.ini", "ntldr", "bootmgr", "bcd"
+        // Windows
+        "boot.ini", "ntldr", "bootmgr", "bcd", "SYSTEM", "SOFTWARE", "SAM", "SECURITY",
+        // Docker/Container
+        "Dockerfile", "docker-compose", "containerd",
+        // Configuration file extensions (will match as substrings)
+        ".conf", ".cfg", ".ini", ".yaml", ".yml", ".toml", ".json", ".xml",
+        ".service", ".socket", ".timer", ".target", ".mount", ".automount"
     };
     
     // Boot and kernel files
     bootFiles_ = {
-        "vmlinuz", "vmlinux", "bzImage", "kernel",
-        "initrd", "initramfs", "initrd.img",
-        "grub.cfg", "grub.conf", "menu.lst",
+        // Linux kernels
+        "vmlinuz", "vmlinux", "bzImage", "kernel", "zImage",
+        // Initrd/Initramfs
+        "initrd", "initramfs", "initrd.img", "initramfs.img",
+        // GRUB
+        "grub.cfg", "grub.conf", "menu.lst", "grubenv", "device.map",
+        // Kernel config/symbols
         "System.map", "config-",
-        "efi", "bootx64.efi", "bootia32.efi",
+        // UEFI
+        "efi", "bootx64.efi", "bootia32.efi", "bootmgfw.efi", "shimx64.efi", "grubx64.efi",
+        // GRUB images
         "boot.img", "core.img",
-        "boot.efi", "mach_kernel",
-        "ntldr", "bootmgr", "winload.exe", "winresume.exe"
+        // macOS
+        "boot.efi", "mach_kernel", "kernelcache",
+        // Windows
+        "ntldr", "bootmgr", "winload.exe", "winresume.exe", "bootstat.dat",
+        "BOOTSECT.BAK", "BCD-Template", "BOOTSTAT.DAT"
     };
 }
 
@@ -926,7 +1024,11 @@ void FileClassifier::initializeExtendedExtensionMap() {
     // System library files
     std::vector<std::string> libExts = {
         "so", "a", "dylib", "framework",
-        "ko", "o"
+        "ko", "o",
+        // Windows drivers and system files
+        "sys", "drv",
+        // macOS bundles and kernel extensions
+        "bundle", "kext"
     };
     for (const auto& ext : libExts) {
         extendedExtensionMap_[ext] = FileCategory::OS_LIBRARY;
