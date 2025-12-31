@@ -61,7 +61,6 @@ private:
 	sqlite3* fileDb_;
 
 	std::unordered_map<std::string, FileCategory> extensionMap_;
-	bool useAdvancedClassification_;
 	
 	// Advanced classification data structures
 	std::vector<std::string> osConfigPaths_;

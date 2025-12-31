@@ -7,8 +7,7 @@
 FileClassifier::FileClassifier(const std::string& sourceDbPath,
 	const std::string& fileDbPath)
 	: sourceDbPath_(sourceDbPath), fileDbPath_(fileDbPath),
-	sourceDb_(nullptr), fileDb_(nullptr),
-	useAdvancedClassification_(true) {
+	sourceDb_(nullptr), fileDb_(nullptr) {
 	initializeExtensionMap();
 	initializePathPatterns();
 	initializeFilenamePatterns();
@@ -430,12 +429,7 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 		category = it->second;
 	}
 
-	// 3. If advanced classification is disabled, return basic result
-	if (!useAdvancedClassification_) {
-		return category;
-	}
-
-	// 4. Advanced Classification Logic
+	// 3. Enhanced Classification Logic
 	// Priority 1: Check filename patterns for known system files
 	if (isSystemConfigFile(filename)) {
 		return FileCategory::OS_CONFIG;
