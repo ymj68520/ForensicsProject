@@ -339,19 +339,8 @@ bool FileClassifier::classifyFiles() {
 		const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
 		std::string md5 = md5Ptr ? md5Ptr : "";
 
-		// Determine category
-		FileCategory category = determineCategory(name, type);
-		
-		// Apply advanced classification if enabled
-		if (useAdvancedClassification_) {
-			std::string extension;
-			size_t dotPos = name.find_last_of('.');
-			if (dotPos != std::string::npos) {
-				extension = name.substr(dotPos + 1);
-				std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-			}
-			category = classifyFileAdvanced(name, path, extension, category);
-		}
+		// Determine category using integrated classification logic
+		FileCategory category = determineCategory(name, path);
 		
 		categoryCounts[category]++;
 
@@ -425,8 +414,8 @@ bool FileClassifier::classifyFiles() {
 }
 
 FileCategory FileClassifier::determineCategory(const std::string& filename,
-	const std::string& type) {
-	// Extract extension
+	const std::string& path) {
+	// 1. Extract extension for basic classification
 	std::string extension;
 	size_t dotPos = filename.find_last_of('.');
 	if (dotPos != std::string::npos) {
@@ -434,13 +423,82 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 		std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
 	}
 
-	// Check extension map
+	// 2. Basic extension-based classification
+	FileCategory category = FileCategory::UNKNOWN;
 	auto it = extensionMap_.find(extension);
 	if (it != extensionMap_.end()) {
-		return it->second;
+		category = it->second;
 	}
 
-	return FileCategory::UNKNOWN;
+	// 3. If advanced classification is disabled, return basic result
+	if (!useAdvancedClassification_) {
+		return category;
+	}
+
+	// 4. Advanced Classification Logic
+	// Priority 1: Check filename patterns for known system files
+	if (isSystemConfigFile(filename)) {
+		return FileCategory::OS_CONFIG;
+	}
+	
+	if (isBootFile(filename)) {
+		return FileCategory::OS_BOOT;
+	}
+	
+	if (isLogFile(filename)) {
+		return FileCategory::LOG_FILE;
+	}
+
+	// Check for NTFS Metadata files
+	if (filename.size() > 0 && filename[0] == '$') {
+		if (filename == "$LogFile" || filename.find("$TxfLog") != std::string::npos) {
+			return FileCategory::FS_JOURNAL;
+		}
+		if (filename == "$MFT" || filename == "$MFTMirr" || filename == "$Bitmap" || 
+			filename == "$Boot" || filename == "$Volume" || filename == "$AttrDef" ||
+			filename == "$BadClus" || filename == "$Secure" || filename == "$UpCase" ||
+			filename == "$Extend") {
+			return FileCategory::FS_METADATA;
+		}
+	}
+	
+	if (isBackupFile(filename)) {
+		return FileCategory::BACKUP;
+	}
+	
+	// Priority 2: Check path patterns
+	if (isOSConfigPath(path)) {
+		return FileCategory::OS_CONFIG;
+	}
+	
+	if (isBootPath(path)) {
+		return FileCategory::OS_BOOT;
+	}
+	
+	if (isLibraryPath(path)) {
+		return FileCategory::OS_LIBRARY;
+	}
+	
+	if (isLogPath(path)) {
+		return FileCategory::LOG_FILE;
+	}
+	
+	if (isCachePath(path)) {
+		return FileCategory::CACHE;
+	}
+	
+	if (isTempPath(path)) {
+		return FileCategory::TEMP;
+	}
+	
+	// Priority 3: Check extended extension map
+	auto extendedIt = extendedExtensionMap_.find(extension);
+	if (extendedIt != extendedExtensionMap_.end()) {
+		return extendedIt->second;
+	}
+	
+	// Priority 4: Return basic category
+	return category;
 }
 
 std::string FileClassifier::getCategoryName(FileCategory category) {
@@ -633,79 +691,7 @@ void FileClassifier::closeDatabases() {
 }
 // Advanced classification method implementations
 
-FileCategory FileClassifier::classifyFileAdvanced(const std::string& filename,
-                                                   const std::string& filepath,
-                                                   const std::string& extension,
-                                                   FileCategory basicCategory) {
-    // Priority 1: Check filename patterns for known system files
-    if (isSystemConfigFile(filename)) {
-        return FileCategory::OS_CONFIG;
-    }
-    
-    if (isBootFile(filename)) {
-        return FileCategory::OS_BOOT;
-    }
-    
-    if (isLogFile(filename)) {
-        return FileCategory::LOG_FILE;
-    }
-
-    // Check for NTFS Metadata files
-    if (filename.size() > 0 && filename[0] == '$') {
-        if (filename == "$LogFile" || filename.find("$TxfLog") != std::string::npos) {
-            return FileCategory::FS_JOURNAL;
-        }
-        if (filename == "$MFT" || filename == "$MFTMirr" || filename == "$Bitmap" || 
-            filename == "$Boot" || filename == "$Volume" || filename == "$AttrDef" ||
-            filename == "$BadClus" || filename == "$Secure" || filename == "$UpCase" ||
-            filename == "$Extend") {
-            return FileCategory::FS_METADATA;
-        }
-    }
-    
-    if (isBackupFile(filename)) {
-        return FileCategory::BACKUP;
-    }
-    
-    // Priority 2: Check path patterns
-    if (isOSConfigPath(filepath)) {
-        return FileCategory::OS_CONFIG;
-    }
-    
-    if (isBootPath(filepath)) {
-        return FileCategory::OS_BOOT;
-    }
-    
-    if (isLibraryPath(filepath)) {
-        return FileCategory::OS_LIBRARY;
-    }
-    
-    if (isLogPath(filepath)) {
-        return FileCategory::LOG_FILE;
-    }
-    
-    if (isCachePath(filepath)) {
-        return FileCategory::CACHE;
-    }
-    
-    if (isTempPath(filepath)) {
-        return FileCategory::TEMP;
-    }
-    
-    // Priority 3: Check extended extension map
-    auto it = extendedExtensionMap_.find(extension);
-    if (it != extendedExtensionMap_.end()) {
-        return it->second;
-    }
-    
-    // Priority 4: Return basic category if not UNKNOWN
-    if (basicCategory != FileCategory::UNKNOWN) {
-        return basicCategory;
-    }
-    
-    // Default: UNKNOWN
-    return FileCategory::UNKNOWN;
-}
+// Helper methods for classification
 
 bool FileClassifier::isOSConfigPath(const std::string& path) {
     return pathContains(path, osConfigPaths_);

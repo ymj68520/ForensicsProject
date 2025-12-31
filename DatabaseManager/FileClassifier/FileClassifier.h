@@ -50,11 +50,9 @@ public:
 
 	bool classifyAndExtract();
 	
-	// Public advanced classification method for testing
-	FileCategory classifyFileAdvanced(const std::string& filename,
-	                                   const std::string& filepath,
-	                                   const std::string& extension,
-	                                   FileCategory basicCategory);
+	// File classification method (public for testing)
+	FileCategory determineCategory(const std::string& filename,
+		const std::string& path);
 
 private:
 	std::string sourceDbPath_;
@@ -79,8 +77,6 @@ private:
 	bool openDatabases();
 	bool createCategoryTables();
 	bool classifyFiles();
-	FileCategory determineCategory(const std::string& filename,
-		const std::string& type);
 	std::string getCategoryName(FileCategory category);
 	std::string getCategoryTableName(FileCategory category);
 	void initializeExtensionMap();

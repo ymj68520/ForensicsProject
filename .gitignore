@@ -413,3 +413,4 @@ tests/test_merged_classifier
 .gitignore
 tests/test_advanced_classifier
 tests/test_advanced_classifier.cpp
+tests/test_classifier
