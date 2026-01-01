@@ -33,11 +33,17 @@
 sudo apt-get update
 sudo apt-get install -y build-essential cmake git
 
+# (可选) 安装 Google Test
+sudo apt-get install -y libgtest-dev libgmock-dev
+
 # 安装 SQLite3
 sudo apt-get install -y libsqlite3-dev sqlite3
 
 # 安装 libewf 以支持 E01 格式
 sudo apt-get install -y libewf-dev
+
+# 安装 Windows 系统文件分析支持
+sudo apt-get install -y libhivex-dev libevtx-dev libevtx-utils
 
 # 安装 HTTP 服务支持
 sudo apt-get install libasio-dev nlohmann-json3-dev

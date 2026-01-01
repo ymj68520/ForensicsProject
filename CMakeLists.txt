@@ -12,6 +12,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Find required packages
 find_package(SQLite3 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system thread)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(HIVEX REQUIRED hivex)
 
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
@@ -60,8 +62,13 @@ else()
 endif()
 
 include_directories(
-  ${CMAKE_SOURCE_DIR} ${TSK_INCLUDE_DIR} ${SQLite3_INCLUDE_DIRS}
-  ${Boost_INCLUDE_DIRS} ${NLOHMANN_JSON_INCLUDE_DIRS} ${ASIO_INCLUDE_DIRS}
+  ${CMAKE_SOURCE_DIR}
+  ${TSK_INCLUDE_DIR}
+  ${SQLite3_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${NLOHMANN_JSON_INCLUDE_DIRS}
+  ${ASIO_INCLUDE_DIRS}
+  ${HIVEX_INCLUDE_DIRS}
   # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
 )
 
@@ -84,6 +91,11 @@ set(SOURCES
     AndroidAnalyzer/AndroidSystemParsers.cpp
     AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     AndroidAnalyzer/BuildPropAnalyzer.cpp
+    WindowsFilesAnalyzer/WindowsFilesAnalyzerCore.cpp
+    WindowsFilesAnalyzer/WindowsAnalysisDatabase.cpp
+    WindowsFilesAnalyzer/WindowsRegistryParser.cpp
+    WindowsFilesAnalyzer/WindowsEventLogParser.cpp
+    WindowsFilesAnalyzer/WindowsArtifactsParsers.cpp
     AuditLog/AuditLog.cpp)
 
 # Create executable
@@ -95,8 +107,13 @@ if(WIN32)
                         ${Boost_LIBRARIES} ${PLATFORM_LIBRARIES})
 else()
   target_link_libraries(
-    forensic_analyzer ${TSK_LIBRARIES} ewf ${SQLite3_LIBRARIES}
-    ${Boost_LIBRARIES} ${PLATFORM_LIBRARIES})
+    forensic_analyzer
+    ${TSK_LIBRARIES}
+    ewf
+    ${SQLite3_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${HIVEX_LIBRARIES}
+    ${PLATFORM_LIBRARIES})
 endif()
 
 # Installation
