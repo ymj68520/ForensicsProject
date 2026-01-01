@@ -39,6 +39,7 @@ struct EventLogEntry {
 struct PrefetchInfo {
     std::string filePath;           // Path to prefetch file
     std::string executableName;     // Executable name
+    std::string executablePath;     // Full path to executable
     std::string prefetchHash;       // Prefetch hash
     int runCount;                   // Number of times executed
     int64_t lastRunTime;            // Last execution time

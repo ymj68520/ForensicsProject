@@ -40,6 +40,7 @@
 #include "WindowsDataTypes.h"
 #include "WindowsAnalysisDatabase.h"
 #include "WindowsAnalyzerDeclarations.h"
+#include "WindowsEventLogParser.h"
 
 // Implementation files:
 // - WindowsFilesAnalyzerCore.cpp: Core functionality (initialize, analyzeWindowsData)

@@ -47,7 +47,7 @@ sudo apt-get install -y libhivex-dev libevtx-dev libevtx-utils
 
 # 安装 HTTP 服务支持
 sudo apt-get install libasio-dev nlohmann-json3-dev
-sudo apt-get install libboost-system-dev libboost-thread-dev
+sudo apt-get install libboost-system-dev libboost-thread-dev libesedb-dev
 git clone https://github.com/CrowCpp/Crow.git
 cd Crow && sudo mkdir build && cd build
 cmake .. -DCROW_BUILD_EXAMPLES=OFF -DCROW_BUILD_TESTS=OFF

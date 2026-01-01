@@ -2,7 +2,7 @@
 // Core implementation of WindowsFilesAnalyzer
 
 #include "WindowsFilesAnalyzer.h"
-#include "../AuditLog/AuditLog.h"
+#include "AuditLog/AuditLog.h"
 #include <filesystem>
 
 namespace fs = std::filesystem;

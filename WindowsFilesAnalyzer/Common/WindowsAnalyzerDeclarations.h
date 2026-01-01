@@ -10,7 +10,9 @@
 #include <memory>
 #include "WindowsDataTypes.h"
 #include "WindowsAnalysisDatabase.h"
+#include <libevtx.h>
 
+// Forward declarations
 class DatabaseManager;
 class FileExtractor;
 struct FileRecord;
@@ -70,6 +72,13 @@ private:
     std::vector<WindowsUserInfo> parseUserAccountsFromSAM(const std::string& samPath);
     std::vector<USBDeviceInfo> parseUSBDevicesFromRegistry(const std::string& systemPath);
     std::vector<WindowsServiceInfo> parseServicesFromRegistry(const std::string& systemPath);
+
+    // Event Log parsing helpers
+    std::pair<std::vector<EventLogEntry>, int> parseEventLogWithRecovery(const std::string& logPath);
+    EventLogEntry extractEventLogEntry(libevtx_record_t* record,
+                                       const std::string& logSource,
+                                       const std::string& logPath,
+                                       bool isRecovered);
 
     // Path utilities
     std::string getExtractPath(const std::string& relativePath);

@@ -61,10 +61,13 @@ bool WindowsAnalysisDatabase::createTables() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_path TEXT,
             executable_name TEXT,
+            executable_path TEXT,
             prefetch_hash TEXT,
             run_count INTEGER,
             last_run_time INTEGER,
-            creation_time INTEGER
+            creation_time INTEGER,
+            referenced_files TEXT,
+            referenced_directories TEXT
         );
 
         -- LNK Files
@@ -313,16 +316,31 @@ bool WindowsAnalysisDatabase::insertEventLogEntry(const EventLogEntry& entry) {
 }
 
 bool WindowsAnalysisDatabase::insertPrefetchInfo(const PrefetchInfo& info) {
-    const char* sql = "INSERT INTO prefetch_files (file_path, executable_name, prefetch_hash, run_count, last_run_time, creation_time) VALUES (?, ?, ?, ?, ?, ?);";
+    const char* sql = "INSERT INTO prefetch_files (file_path, executable_name, executable_path, prefetch_hash, run_count, last_run_time, creation_time, referenced_files, referenced_directories) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
 
     BIND_TEXT(stmt, 1, info.filePath);
     BIND_TEXT(stmt, 2, info.executableName);
-    BIND_TEXT(stmt, 3, info.prefetchHash);
-    BIND_INT(stmt, 4, info.runCount);
-    BIND_INT64(stmt, 5, info.lastRunTime);
-    BIND_INT64(stmt, 6, info.creationTime);
+    BIND_TEXT(stmt, 3, info.executablePath);
+    BIND_TEXT(stmt, 4, info.prefetchHash);
+    BIND_INT(stmt, 5, info.runCount);
+    BIND_INT64(stmt, 6, info.lastRunTime);
+    BIND_INT64(stmt, 7, info.creationTime);
+
+    // Convert vectors to comma-separated strings
+    std::string refFilesStr, refDirsStr;
+    for (size_t i = 0; i < info.referencedFiles.size(); i++) {
+        if (i > 0) refFilesStr += ",";
+        refFilesStr += info.referencedFiles[i];
+    }
+    for (size_t i = 0; i < info.referencedDirectories.size(); i++) {
+        if (i > 0) refDirsStr += ",";
+        refDirsStr += info.referencedDirectories[i];
+    }
+
+    BIND_TEXT(stmt, 8, refFilesStr);
+    BIND_TEXT(stmt, 9, refDirsStr);
 
     bool result = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);

@@ -14,6 +14,9 @@ find_package(SQLite3 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HIVEX REQUIRED hivex)
+pkg_check_modules(LIBEVTX REQUIRED libevtx)
+pkg_check_modules(LIBBFIO REQUIRED libbfio)
+pkg_check_modules(LIBESEDB REQUIRED libesedb)
 
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
@@ -69,6 +72,15 @@ include_directories(
   ${NLOHMANN_JSON_INCLUDE_DIRS}
   ${ASIO_INCLUDE_DIRS}
   ${HIVEX_INCLUDE_DIRS}
+  ${LIBEVTX_INCLUDE_DIRS}
+  ${LIBBFIO_INCLUDE_DIRS}
+  ${LIBESEDB_INCLUDE_DIRS}
+  # WindowsFilesAnalyzer includes
+  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer
+  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Parsers
   # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
 )
 
@@ -91,11 +103,15 @@ set(SOURCES
     AndroidAnalyzer/AndroidSystemParsers.cpp
     AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     AndroidAnalyzer/BuildPropAnalyzer.cpp
-    WindowsFilesAnalyzer/WindowsFilesAnalyzerCore.cpp
-    WindowsFilesAnalyzer/WindowsAnalysisDatabase.cpp
-    WindowsFilesAnalyzer/WindowsRegistryParser.cpp
-    WindowsFilesAnalyzer/WindowsEventLogParser.cpp
-    WindowsFilesAnalyzer/WindowsArtifactsParsers.cpp
+    WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
+    WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
     AuditLog/AuditLog.cpp)
 
 # Create executable
@@ -113,6 +129,9 @@ else()
     ${SQLite3_LIBRARIES}
     ${Boost_LIBRARIES}
     ${HIVEX_LIBRARIES}
+    ${LIBEVTX_LIBRARIES}
+    ${LIBBFIO_LIBRARIES}
+    ${LIBESEDB_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 
