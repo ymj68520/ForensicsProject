@@ -52,7 +52,32 @@ public:
     bool insertRecycleBinEntry(const RecycleBinEntry& entry);
     std::vector<RecycleBinEntry> queryRecycleBinEntries(const std::string& whereClause = "");
 
-    // Browser artifact operations
+    // Browser history operations (detailed)
+    bool insertBrowserHistory(const BrowserHistoryEntry& entry);
+    bool insertBrowserHistories(const std::vector<BrowserHistoryEntry>& entries);
+    std::vector<BrowserHistoryEntry> queryBrowserHistory(const std::string& whereClause = "");
+
+    // Browser download operations (detailed)
+    bool insertBrowserDownload(const BrowserDownloadEntry& entry);
+    bool insertBrowserDownloads(const std::vector<BrowserDownloadEntry>& entries);
+    std::vector<BrowserDownloadEntry> queryBrowserDownloads(const std::string& whereClause = "");
+
+    // Browser bookmark operations (detailed)
+    bool insertBrowserBookmark(const BrowserBookmarkEntry& entry);
+    bool insertBrowserBookmarks(const std::vector<BrowserBookmarkEntry>& entries);
+    std::vector<BrowserBookmarkEntry> queryBrowserBookmarks(const std::string& whereClause = "");
+
+    // Browser cookie operations (detailed)
+    bool insertBrowserCookie(const BrowserCookieEntry& entry);
+    bool insertBrowserCookies(const std::vector<BrowserCookieEntry>& entries);
+    std::vector<BrowserCookieEntry> queryBrowserCookies(const std::string& whereClause = "");
+
+    // Browser login/credential operations (detailed)
+    bool insertBrowserLogin(const BrowserLoginEntry& entry);
+    bool insertBrowserLogins(const std::vector<BrowserLoginEntry>& entries);
+    std::vector<BrowserLoginEntry> queryBrowserLogins(const std::string& whereClause = "");
+
+    // Legacy browser artifact operations (for backwards compatibility)
     bool insertBrowserArtifact(const BrowserArtifact& artifact);
     std::vector<BrowserArtifact> queryBrowserArtifacts(const std::string& whereClause = "");
 

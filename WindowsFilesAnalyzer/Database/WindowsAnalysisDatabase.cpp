@@ -143,7 +143,84 @@ bool WindowsAnalysisDatabase::createTables() {
             user_sid TEXT
         );
 
-        -- Browser Artifacts
+        -- Browser History (Detailed)
+        CREATE TABLE IF NOT EXISTS browser_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            browser_name TEXT,
+            profile_name TEXT,
+            url TEXT,
+            title TEXT,
+            visit_time INTEGER,
+            visit_duration INTEGER,
+            visit_count INTEGER,
+            visit_type TEXT,
+            is_redirect INTEGER,
+            referrer TEXT
+        );
+
+        -- Browser Downloads (Detailed)
+        CREATE TABLE IF NOT EXISTS browser_downloads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            browser_name TEXT,
+            profile_name TEXT,
+            url TEXT,
+            target_path TEXT,
+            file_name TEXT,
+            file_size INTEGER,
+            start_time INTEGER,
+            end_time INTEGER,
+            state TEXT,
+            mime_type TEXT,
+            referrer TEXT,
+            received_bytes INTEGER,
+            danger_accepted INTEGER
+        );
+
+        -- Browser Bookmarks (Detailed)
+        CREATE TABLE IF NOT EXISTS browser_bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            browser_name TEXT,
+            profile_name TEXT,
+            url TEXT,
+            title TEXT,
+            folder_path TEXT,
+            date_added INTEGER,
+            date_modified INTEGER
+        );
+
+        -- Browser Cookies (Detailed)
+        CREATE TABLE IF NOT EXISTS browser_cookies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            browser_name TEXT,
+            profile_name TEXT,
+            domain TEXT,
+            name TEXT,
+            path TEXT,
+            creation_time INTEGER,
+            expiration_time INTEGER,
+            last_access_time INTEGER,
+            is_secure INTEGER,
+            is_http_only INTEGER,
+            is_persistent INTEGER,
+            same_site TEXT
+        );
+
+        -- Browser Logins (Detailed)
+        CREATE TABLE IF NOT EXISTS browser_logins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            browser_name TEXT,
+            profile_name TEXT,
+            url TEXT,
+            action_url TEXT,
+            username TEXT,
+            encrypted_password TEXT,
+            date_created INTEGER,
+            date_last_used INTEGER,
+            date_modified INTEGER,
+            times_used INTEGER
+        );
+
+        -- Browser Artifacts (Legacy - for backwards compatibility)
         CREATE TABLE IF NOT EXISTS browser_artifacts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             browser_name TEXT,
@@ -663,3 +740,199 @@ std::vector<SrumEntry> WindowsAnalysisDatabase::querySrumEntries(const std::stri
     return {};
 }
 
+// ============================================================================
+// Browser Data Insertion Methods (Detailed)
+// ============================================================================
+
+bool WindowsAnalysisDatabase::insertBrowserHistory(const BrowserHistoryEntry& entry) {
+    const char* sql = "INSERT INTO browser_history (browser_name, profile_name, url, title, visit_time, visit_duration, visit_count, visit_type, is_redirect, referrer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.browserName);
+    BIND_TEXT(stmt, 2, entry.profileName);
+    BIND_TEXT(stmt, 3, entry.url);
+    BIND_TEXT(stmt, 4, entry.title);
+    BIND_INT64(stmt, 5, entry.visitTime);
+    BIND_INT64(stmt, 6, entry.visitDuration);
+    BIND_INT(stmt, 7, entry.visitCount);
+    BIND_TEXT(stmt, 8, entry.visitType);
+    BIND_INT(stmt, 9, entry.isRedirect ? 1 : 0);
+    BIND_TEXT(stmt, 10, entry.referrer);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+bool WindowsAnalysisDatabase::insertBrowserHistories(const std::vector<BrowserHistoryEntry>& entries) {
+    if (entries.empty()) return true;
+    
+    beginTransaction();
+    for (const auto& entry : entries) {
+        if (!insertBrowserHistory(entry)) {
+            rollbackTransaction();
+            return false;
+        }
+    }
+    return commitTransaction();
+}
+
+bool WindowsAnalysisDatabase::insertBrowserDownload(const BrowserDownloadEntry& entry) {
+    const char* sql = "INSERT INTO browser_downloads (browser_name, profile_name, url, target_path, file_name, file_size, start_time, end_time, state, mime_type, referrer, received_bytes, danger_accepted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.browserName);
+    BIND_TEXT(stmt, 2, entry.profileName);
+    BIND_TEXT(stmt, 3, entry.url);
+    BIND_TEXT(stmt, 4, entry.targetPath);
+    BIND_TEXT(stmt, 5, entry.fileName);
+    BIND_INT64(stmt, 6, entry.fileSize);
+    BIND_INT64(stmt, 7, entry.startTime);
+    BIND_INT64(stmt, 8, entry.endTime);
+    BIND_TEXT(stmt, 9, entry.state);
+    BIND_TEXT(stmt, 10, entry.mimeType);
+    BIND_TEXT(stmt, 11, entry.referrer);
+    BIND_INT64(stmt, 12, entry.receivedBytes);
+    BIND_INT(stmt, 13, entry.dangerAccepted ? 1 : 0);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+bool WindowsAnalysisDatabase::insertBrowserDownloads(const std::vector<BrowserDownloadEntry>& entries) {
+    if (entries.empty()) return true;
+    
+    beginTransaction();
+    for (const auto& entry : entries) {
+        if (!insertBrowserDownload(entry)) {
+            rollbackTransaction();
+            return false;
+        }
+    }
+    return commitTransaction();
+}
+
+bool WindowsAnalysisDatabase::insertBrowserBookmark(const BrowserBookmarkEntry& entry) {
+    const char* sql = "INSERT INTO browser_bookmarks (browser_name, profile_name, url, title, folder_path, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.browserName);
+    BIND_TEXT(stmt, 2, entry.profileName);
+    BIND_TEXT(stmt, 3, entry.url);
+    BIND_TEXT(stmt, 4, entry.title);
+    BIND_TEXT(stmt, 5, entry.folderPath);
+    BIND_INT64(stmt, 6, entry.dateAdded);
+    BIND_INT64(stmt, 7, entry.dateModified);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+bool WindowsAnalysisDatabase::insertBrowserBookmarks(const std::vector<BrowserBookmarkEntry>& entries) {
+    if (entries.empty()) return true;
+    
+    beginTransaction();
+    for (const auto& entry : entries) {
+        if (!insertBrowserBookmark(entry)) {
+            rollbackTransaction();
+            return false;
+        }
+    }
+    return commitTransaction();
+}
+
+bool WindowsAnalysisDatabase::insertBrowserCookie(const BrowserCookieEntry& entry) {
+    const char* sql = "INSERT INTO browser_cookies (browser_name, profile_name, domain, name, path, creation_time, expiration_time, last_access_time, is_secure, is_http_only, is_persistent, same_site) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.browserName);
+    BIND_TEXT(stmt, 2, entry.profileName);
+    BIND_TEXT(stmt, 3, entry.domain);
+    BIND_TEXT(stmt, 4, entry.name);
+    BIND_TEXT(stmt, 5, entry.path);
+    BIND_INT64(stmt, 6, entry.creationTime);
+    BIND_INT64(stmt, 7, entry.expirationTime);
+    BIND_INT64(stmt, 8, entry.lastAccessTime);
+    BIND_INT(stmt, 9, entry.isSecure ? 1 : 0);
+    BIND_INT(stmt, 10, entry.isHttpOnly ? 1 : 0);
+    BIND_INT(stmt, 11, entry.isPersistent ? 1 : 0);
+    BIND_TEXT(stmt, 12, entry.sameSite);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+bool WindowsAnalysisDatabase::insertBrowserCookies(const std::vector<BrowserCookieEntry>& entries) {
+    if (entries.empty()) return true;
+    
+    beginTransaction();
+    for (const auto& entry : entries) {
+        if (!insertBrowserCookie(entry)) {
+            rollbackTransaction();
+            return false;
+        }
+    }
+    return commitTransaction();
+}
+
+bool WindowsAnalysisDatabase::insertBrowserLogin(const BrowserLoginEntry& entry) {
+    const char* sql = "INSERT INTO browser_logins (browser_name, profile_name, url, action_url, username, encrypted_password, date_created, date_last_used, date_modified, times_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.browserName);
+    BIND_TEXT(stmt, 2, entry.profileName);
+    BIND_TEXT(stmt, 3, entry.url);
+    BIND_TEXT(stmt, 4, entry.actionUrl);
+    BIND_TEXT(stmt, 5, entry.username);
+    BIND_TEXT(stmt, 6, entry.encryptedPassword);
+    BIND_INT64(stmt, 7, entry.dateCreated);
+    BIND_INT64(stmt, 8, entry.dateLastUsed);
+    BIND_INT64(stmt, 9, entry.dateModified);
+    BIND_INT(stmt, 10, entry.timesUsed);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+bool WindowsAnalysisDatabase::insertBrowserLogins(const std::vector<BrowserLoginEntry>& entries) {
+    if (entries.empty()) return true;
+    
+    beginTransaction();
+    for (const auto& entry : entries) {
+        if (!insertBrowserLogin(entry)) {
+            rollbackTransaction();
+            return false;
+        }
+    }
+    return commitTransaction();
+}
+
+// Query methods (stub implementations)
+std::vector<BrowserHistoryEntry> WindowsAnalysisDatabase::queryBrowserHistory(const std::string& whereClause) {
+    return {};
+}
+
+std::vector<BrowserDownloadEntry> WindowsAnalysisDatabase::queryBrowserDownloads(const std::string& whereClause) {
+    return {};
+}
+
+std::vector<BrowserBookmarkEntry> WindowsAnalysisDatabase::queryBrowserBookmarks(const std::string& whereClause) {
+    return {};
+}
+
+std::vector<BrowserCookieEntry> WindowsAnalysisDatabase::queryBrowserCookies(const std::string& whereClause) {
+    return {};
+}
+
+std::vector<BrowserLoginEntry> WindowsAnalysisDatabase::queryBrowserLogins(const std::string& whereClause) {
+    return {};
+}

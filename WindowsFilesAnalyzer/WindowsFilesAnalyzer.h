@@ -37,14 +37,14 @@
 #include "../DatabaseManager/FileExtractor/FileExtractor.h"
 
 // Module includes
-#include "WindowsDataTypes.h"
-#include "WindowsAnalysisDatabase.h"
-#include "WindowsAnalyzerDeclarations.h"
-#include "WindowsEventLogParser.h"
+#include "Common/WindowsDataTypes.h"
+#include "Database/WindowsAnalysisDatabase.h"
+#include "Common/WindowsAnalyzerDeclarations.h"
+#include "Parsers/WindowsEventLogParser.h"
 
 // Implementation files:
-// - WindowsFilesAnalyzerCore.cpp: Core functionality (initialize, analyzeWindowsData)
-// - WindowsAnalysisDatabase.cpp: Database operations
-// - WindowsRegistryParser.cpp: Registry hive parsing
-// - WindowsEventLogParser.cpp: Event log (EVTX) parsing
-// - WindowsArtifactsParsers.cpp: Prefetch, LNK, Jump Lists, Recycle Bin parsing
+// - Core/WindowsFilesAnalyzerCore.cpp: Core functionality (initialize, analyzeWindowsData)
+// - Database/WindowsAnalysisDatabase.cpp: Database operations
+// - Parsers/WindowsRegistryParser.cpp: Registry hive parsing
+// - Parsers/WindowsEventLogParser.cpp: Event log (EVTX) parsing
+// - Parsers/WindowsArtifactsParsers.cpp: Prefetch, LNK, Jump Lists, Recycle Bin parsing

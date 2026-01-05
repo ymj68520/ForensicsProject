@@ -6,6 +6,7 @@
 #include "WindowsLnkParser.h"
 #include "WindowsAmcacheParser.h"
 #include "WindowsSrumParser.h"
+#include "WindowsBrowserParser.h"
 #include "AuditLog/AuditLog.h"
 #include <fstream>
 #include <ctime>
@@ -154,7 +155,17 @@ void WindowsFilesAnalyzer::analyzeJumpLists() {
 }
 
 std::vector<JumpListEntry> WindowsFilesAnalyzer::parseJumpListFile(const std::string& jumpListPath) {
-    // Jump Lists are OLE Compound Files containing streams that are LNK files
+    // TODO: Jump Lists are OLE Compound Files (CFBF format) containing streams that are LNK files.
+    // Full implementation requires OLE parsing library (e.g., libcompoundfile).
+    // Each stream within the compound file is an embedded LNK file that can be parsed with LnkParser.
+    // For now, return empty vector - Jump List analysis is deferred.
+    // 
+    // Structure:
+    // - AutomaticDestinations: App-specific recent/frequent items (OLE format)
+    // - CustomDestinations: User-pinned items (different format, less complex)
+    
+    AuditLog::instance().log("INFO", "JUMPLIST_DEFERRED",
+        "Jump List parsing not implemented (requires OLE library): " + jumpListPath);
     return {};
 }
 
@@ -184,17 +195,43 @@ std::vector<RecycleBinEntry> WindowsFilesAnalyzer::parseRecycleBin(const std::st
     std::ifstream file(recycleBinPath, std::ios::binary);
     if (!file) return entries;
     
-    // $I file format
-    // Version 1 (Win < 10): Header (8), Size (8), Deleted Time (8), Path (520)
-    // Version 2 (Win 10+): Header (8), Size (8), Deleted Time (8), Path Len (4), Path (variable)
+    // Get file size
+    file.seekg(0, std::ios::end);
+    size_t fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    if (fileSize < 24) return entries; // Minimum header size
+    
+    // $I file format:
+    // Version 1 (Win Vista/7/8): Header(8), Size(8), DeletedTime(8), Path(520 bytes UTF-16LE, fixed)
+    // Version 2 (Win 10+): Header(8), Size(8), DeletedTime(8), PathLen(4), Path(variable UTF-16LE)
     
     uint64_t version = 0;
     file.read(reinterpret_cast<char*>(&version), 8);
     
-    if (version == 1 || version == 2) {
-        RecycleBinEntry entry;
-        entry.recycleFilePath = recycleBinPath;
-        
+    RecycleBinEntry entry;
+    entry.recycleFilePath = recycleBinPath;
+    
+    // Extract user SID from parent directory path
+    // Path format: .../$Recycle.Bin/S-1-5-21-xxx-xxx-xxx-xxxx/$Ixxxxxx
+    fs::path recyclePath(recycleBinPath);
+    fs::path parent = recyclePath.parent_path();
+    if (!parent.empty()) {
+        std::string sidDir = parent.filename().string();
+        if (sidDir.substr(0, 4) == "S-1-") {
+            entry.userSid = sidDir;
+        }
+    }
+    
+    // Extract original filename hint from $I filename
+    // $I filename format: $Ixxxxxx where xxxxxx matches $Rxxxxxx (actual deleted file)
+    std::string iFileName = recyclePath.filename().string();
+    if (iFileName.length() > 2 && iFileName.substr(0, 2) == "$I") {
+        entry.fileName = "$R" + iFileName.substr(2); // Corresponding $R file
+    }
+    
+    if (version == 1) {
+        // Version 1: Fixed 520-byte path (260 UTF-16LE chars)
         uint64_t size;
         file.read(reinterpret_cast<char*>(&size), 8);
         entry.originalSize = size;
@@ -203,8 +240,32 @@ std::vector<RecycleBinEntry> WindowsFilesAnalyzer::parseRecycleBin(const std::st
         file.read(reinterpret_cast<char*>(&deletedTime), 8);
         entry.deletionTime = filetimeToUnixTime(deletedTime);
         
-        // Path parsing depends on version and is simplified here
-        entry.originalPath = "Extracted from $I file";
+        // Read fixed 520-byte UTF-16LE path
+        char pathBuffer[520];
+        file.read(pathBuffer, 520);
+        entry.originalPath = readUTF16LEString(pathBuffer, 520);
+        
+        entries.push_back(entry);
+        
+    } else if (version == 2) {
+        // Version 2: Variable length path
+        uint64_t size;
+        file.read(reinterpret_cast<char*>(&size), 8);
+        entry.originalSize = size;
+        
+        uint64_t deletedTime;
+        file.read(reinterpret_cast<char*>(&deletedTime), 8);
+        entry.deletionTime = filetimeToUnixTime(deletedTime);
+        
+        // Read path length (in bytes, including null terminator)
+        uint32_t pathLen;
+        file.read(reinterpret_cast<char*>(&pathLen), 4);
+        
+        if (pathLen > 0 && pathLen < 65536) { // Sanity check
+            std::vector<char> pathBuffer(pathLen);
+            file.read(pathBuffer.data(), pathLen);
+            entry.originalPath = readUTF16LEString(pathBuffer.data(), pathLen);
+        }
         
         entries.push_back(entry);
     }
@@ -223,19 +284,99 @@ void WindowsFilesAnalyzer::analyzeUserProfiles() {
     // Handled mainly via Registry (NTUSER.DAT)
 }
 
-void WindowsFilesAnalyzer::analyzeBrowserData() {
-    // Similar to Android, look for SQLite databases in AppData
-    // Chrome: AppData/Local/Google/Chrome/User Data/Default/History
-    // Edge: AppData/Local/Microsoft/Edge/User Data/Default/History
-    // Firefox: AppData/Roaming/Mozilla/Firefox/Profiles/*.default*/places.sqlite
-}
-
 void WindowsFilesAnalyzer::analyzeWindowsServices() {
-    // Extracted from SYSTEM registry hive
+    // Extracted from SYSTEM registry hive (already handled in analyzeRegistryHives)
 }
 
 void WindowsFilesAnalyzer::analyzeScheduledTasks() {
-    // Windows/System32/Tasks/*.xml
+    std::cout << "Analyzing Scheduled Tasks..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "SCHEDULED_TASKS_START",
+        "Starting scheduled tasks analysis");
+
+    // Query for task XML files in Windows/System32/Tasks
+    std::vector<FileRecord> taskFiles = queryFilesByPattern("%/Windows/System32/Tasks/%");
+
+    int processedCount = 0;
+    
+    for (const auto& file : taskFiles) {
+        // Skip directories and non-XML files (Tasks folder contains both XML files and subdirectories)
+        if (file.size == 0) continue;
+
+        std::string extractPath = getExtractPath("tasks/" + std::to_string(file.inode) + "_" + file.name);
+
+        if (extractFileToPath(file.inode, extractPath)) {
+            // Read file content for basic XML parsing
+            std::ifstream taskFile(extractPath);
+            if (taskFile) {
+                std::stringstream buffer;
+                buffer << taskFile.rdbuf();
+                std::string content = buffer.str();
+
+                // Basic XML parsing using regex (for simplicity)
+                // Note: For production, consider using a proper XML parser like pugixml
+                ScheduledTaskInfo task;
+                task.taskName = file.name;
+                task.taskPath = file.path;
+
+                // Extract Command/Exec path
+                std::regex commandRegex("<Command>([^<]+)</Command>");
+                std::smatch commandMatch;
+                if (std::regex_search(content, commandMatch, commandRegex)) {
+                    task.actionPath = commandMatch[1].str();
+                    task.actionType = "Exec";
+                }
+
+                // Extract Arguments
+                std::regex argsRegex("<Arguments>([^<]*)</Arguments>");
+                std::smatch argsMatch;
+                if (std::regex_search(content, argsMatch, argsRegex)) {
+                    task.arguments = argsMatch[1].str();
+                }
+
+                // Extract Enabled state
+                std::regex enabledRegex("<Enabled>(true|false)</Enabled>");
+                std::smatch enabledMatch;
+                if (std::regex_search(content, enabledMatch, enabledRegex)) {
+                    task.status = (enabledMatch[1].str() == "true") ? "Enabled" : "Disabled";
+                } else {
+                    task.status = "Enabled"; // Default to enabled if not specified
+                }
+
+                // Extract Author
+                std::regex authorRegex("<Author>([^<]*)</Author>");
+                std::smatch authorMatch;
+                if (std::regex_search(content, authorMatch, authorRegex)) {
+                    task.author = authorMatch[1].str();
+                }
+
+                // Extract Description
+                std::regex descRegex("<Description>([^<]*)</Description>");
+                std::smatch descMatch;
+                if (std::regex_search(content, descMatch, descRegex)) {
+                    task.description = descMatch[1].str();
+                }
+
+                // Extract UserId (RunAs account)
+                std::regex userIdRegex("<UserId>([^<]*)</UserId>");
+                std::smatch userIdMatch;
+                if (std::regex_search(content, userIdMatch, userIdRegex)) {
+                    task.runAs = userIdMatch[1].str();
+                }
+
+                // Set last run time from file metadata (use modification time as approximation)
+                task.lastRunTime = file.mtime;
+                task.nextRunTime = 0;  // Unknown without parsing trigger details
+
+                // Insert into database
+                windowsDb_->insertScheduledTask(task);
+                processedCount++;
+            }
+        }
+    }
+
+    std::cout << "  Processed " << processedCount << " scheduled task files." << std::endl;
+    AuditLog::instance().log("SYSTEM", "SCHEDULED_TASKS_COMPLETE",
+        "Scheduled tasks analysis completed: " + std::to_string(processedCount) + " tasks");
 }
 
 void WindowsFilesAnalyzer::analyzeAmcache() {

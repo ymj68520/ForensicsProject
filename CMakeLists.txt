@@ -112,6 +112,8 @@ set(SOURCES
     WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
     WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
     WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsBrowserParser.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
     AuditLog/AuditLog.cpp)
 
 # Create executable

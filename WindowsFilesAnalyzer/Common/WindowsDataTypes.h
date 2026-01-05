@@ -116,7 +116,107 @@ struct RecycleBinEntry {
     std::string userSid;            // User SID who deleted
 };
 
-// Browser artifact (Edge, Chrome, Firefox)
+// ============================================================================
+// Browser Data Structures (Detailed forensic structures)
+// ============================================================================
+
+// Browser types supported
+enum class BrowserType {
+    CHROME,
+    EDGE,
+    FIREFOX,
+    INTERNET_EXPLORER,
+    UNKNOWN
+};
+
+// Browser profile information
+struct BrowserProfile {
+    BrowserType browserType;
+    std::string browserName;        // Human-readable name
+    std::string profileName;        // Profile folder/identifier
+    std::string profilePath;        // Full path to profile
+    std::string historyDbPath;      // Path to history database
+    std::string downloadsDbPath;    // Path to downloads (if separate)
+    std::string bookmarksPath;      // Path to bookmarks file
+    std::string cookiesDbPath;      // Path to cookies database
+    std::string loginsDbPath;       // Path to login database
+    std::string preferencesPath;    // Path to preferences
+};
+
+// Browser history entry (visit record)
+struct BrowserHistoryEntry {
+    std::string browserName;        // Chrome, Edge, Firefox, IE
+    std::string profileName;        // Profile folder name
+    std::string url;                // Full URL
+    std::string title;              // Page title
+    int64_t visitTime;              // Visit timestamp (Unix)
+    int64_t visitDuration;          // Time spent on page (ms)
+    int visitCount;                 // Total visit count
+    std::string visitType;          // link, typed, bookmark, reload
+    bool isRedirect;                // Was this a redirect
+    std::string referrer;           // Referrer URL if available
+};
+
+// Browser download entry
+struct BrowserDownloadEntry {
+    std::string browserName;        // Browser name
+    std::string profileName;        // Profile name
+    std::string url;                // Download URL
+    std::string targetPath;         // Local file path
+    std::string fileName;           // Downloaded file name
+    int64_t fileSize;               // File size in bytes
+    int64_t startTime;              // Download start time
+    int64_t endTime;                // Download end time
+    std::string state;              // complete, interrupted, cancelled
+    std::string mimeType;           // MIME type
+    std::string referrer;           // Referrer URL
+    int64_t receivedBytes;          // Bytes received
+    bool dangerAccepted;            // Was dangerous download accepted
+};
+
+// Browser bookmark entry
+struct BrowserBookmarkEntry {
+    std::string browserName;        // Browser name
+    std::string profileName;        // Profile name
+    std::string url;                // Bookmark URL
+    std::string title;              // Bookmark title
+    std::string folderPath;         // Folder hierarchy (e.g., "Bookmarks Bar/Work")
+    int64_t dateAdded;              // Date added timestamp
+    int64_t dateModified;           // Date last modified
+};
+
+// Browser cookie entry
+struct BrowserCookieEntry {
+    std::string browserName;        // Browser name
+    std::string profileName;        // Profile name
+    std::string domain;             // Cookie domain
+    std::string name;               // Cookie name
+    std::string path;               // Cookie path
+    int64_t creationTime;           // Creation timestamp
+    int64_t expirationTime;         // Expiration timestamp
+    int64_t lastAccessTime;         // Last access timestamp
+    bool isSecure;                  // Secure flag
+    bool isHttpOnly;                // HttpOnly flag
+    bool isPersistent;              // Session vs persistent
+    std::string sameSite;           // SameSite attribute
+};
+
+// Browser login/credential entry (encrypted values are stored as hex)
+struct BrowserLoginEntry {
+    std::string browserName;        // Browser name
+    std::string profileName;        // Profile name
+    std::string url;                // Origin URL
+    std::string actionUrl;          // Form action URL
+    std::string username;           // Username field value
+    std::string encryptedPassword;  // Encrypted password (hex)
+    int64_t dateCreated;            // Date credential was saved
+    int64_t dateLastUsed;           // Date last used
+    int64_t dateModified;           // Date modified
+    int timesUsed;                  // Usage count
+};
+
+// Legacy simplified browser artifact (for backwards compatibility)
+// NOTE: This structure is deprecated. Use detailed structures above instead.
 struct BrowserArtifact {
     std::string browserName;        // Browser name
     std::string artifactType;       // history, bookmark, download, cookie, cache

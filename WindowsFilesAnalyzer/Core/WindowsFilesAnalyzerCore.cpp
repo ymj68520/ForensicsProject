@@ -104,38 +104,38 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryWindowsSystemFiles() {
 std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::string& pathPattern) {
     if (!dbManager_) return {};
     
-    // Construct SQL query
-    std::string sql = "path LIKE '" + pathPattern + "' AND type='REG' AND is_deleted=0";
-    
-    // Use FileExtractor's search functionality or access DB directly via DatabaseManager
-    // Since FileExtractor has searchFiles which is private, we might need to use DatabaseManager directly
-    // But DatabaseManager doesn't expose generic search.
-    // However, FileExtractor is initialized with the same DB.
-    
-    // Let's use raw SQL on the source database via dbManager_
     std::vector<FileRecord> results;
     sqlite3* db = dbManager_->getDb();
     if (!db) return results;
     
-    std::string query = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5 FROM files WHERE " + sql;
+    // Use parameterized query to prevent SQL injection
+    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5 "
+                        "FROM files WHERE path LIKE ? AND is_deleted=0";
     sqlite3_stmt* stmt;
     
-    if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK) {
         std::cerr << "Error preparing query: " << sqlite3_errmsg(db) << std::endl;
         return results;
     }
     
+    // Bind the pattern parameter (index 1)
+    sqlite3_bind_text(stmt, 1, pathPattern.c_str(), -1, SQLITE_TRANSIENT);
+    
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;
         record.inode = sqlite3_column_int64(stmt, 0);
-        record.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        record.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        const char* namePtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        record.name = namePtr ? namePtr : "";
+        const char* pathPtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        record.path = pathPtr ? pathPtr : "";
         record.size = sqlite3_column_int64(stmt, 3);
         record.mtime = sqlite3_column_int64(stmt, 4);
-        record.ctime = sqlite3_column_int64(stmt, 5);
-        record.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-        record.isDeleted = sqlite3_column_int(stmt, 7);
-        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
+        record.atime = sqlite3_column_int64(stmt, 5);
+        record.crtime = sqlite3_column_int64(stmt, 6);
+        const char* typePtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        record.type = typePtr ? typePtr : "";
+        record.isDeleted = sqlite3_column_int(stmt, 8);
+        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         record.md5 = md5Ptr ? md5Ptr : "";
         
         results.push_back(record);
@@ -148,31 +148,38 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::str
 std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByCategory(const std::string& category) {
     if (!dbManager_) return {};
     
-    std::string sql = "category = '" + category + "' AND type='REG'";
-    
     std::vector<FileRecord> results;
     sqlite3* db = dbManager_->getDb();
     if (!db) return results;
     
-    std::string query = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5 FROM files WHERE " + sql;
+    // Use parameterized query to prevent SQL injection
+    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5 "
+                        "FROM files WHERE category = ?";
     sqlite3_stmt* stmt;
     
-    if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK) {
         std::cerr << "Error preparing query: " << sqlite3_errmsg(db) << std::endl;
         return results;
     }
     
+    // Bind the category parameter (index 1)
+    sqlite3_bind_text(stmt, 1, category.c_str(), -1, SQLITE_TRANSIENT);
+    
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;
         record.inode = sqlite3_column_int64(stmt, 0);
-        record.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        record.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        const char* namePtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        record.name = namePtr ? namePtr : "";
+        const char* pathPtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        record.path = pathPtr ? pathPtr : "";
         record.size = sqlite3_column_int64(stmt, 3);
         record.mtime = sqlite3_column_int64(stmt, 4);
-        record.ctime = sqlite3_column_int64(stmt, 5);
-        record.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-        record.isDeleted = sqlite3_column_int(stmt, 7);
-        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
+        record.atime = sqlite3_column_int64(stmt, 5);
+        record.crtime = sqlite3_column_int64(stmt, 6);
+        const char* typePtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        record.type = typePtr ? typePtr : "";
+        record.isDeleted = sqlite3_column_int(stmt, 8);
+        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         record.md5 = md5Ptr ? md5Ptr : "";
         
         results.push_back(record);
@@ -214,6 +221,41 @@ bool WindowsFilesAnalyzer::isWindowsPath(const std::string& path) {
         return true;
     }
     return false;
+}
+
+std::string WindowsFilesAnalyzer::normalizeWindowsPath(const std::string& path) {
+    // Convert Windows-style paths to Unix-style for consistency
+    std::string normalized = path;
+    
+    // Replace backslashes with forward slashes
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    
+    // Remove drive letter if present (e.g., "C:/" -> "/")
+    if (normalized.length() >= 2 && std::isalpha(normalized[0]) && normalized[1] == ':') {
+        normalized = normalized.substr(2);
+    }
+    
+    // Ensure path starts with forward slash
+    if (!normalized.empty() && normalized[0] != '/') {
+        normalized = "/" + normalized;
+    }
+    
+    // Remove duplicate slashes
+    std::string result;
+    bool lastWasSlash = false;
+    for (char c : normalized) {
+        if (c == '/') {
+            if (!lastWasSlash) {
+                result += c;
+                lastWasSlash = true;
+            }
+        } else {
+            result += c;
+            lastWasSlash = false;
+        }
+    }
+    
+    return result;
 }
 
 uint16_t WindowsFilesAnalyzer::readUInt16LE(const char* data) {
