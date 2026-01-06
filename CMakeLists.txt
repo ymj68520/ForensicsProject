@@ -94,9 +94,8 @@ include_directories(
 
 link_directories(${TSK_LIBRARY_DIR})
 
-# Source files
-set(SOURCES
-    main.cpp
+# Source files Common source files
+set(LIB_SOURCES
     ImageAnalyzer/ImageAnalyzer.cpp
     DatabaseManager/DatabaseManager.cpp
     DatabaseManager/EventExtractor/EventExtractor.cpp
@@ -131,8 +130,8 @@ set(SOURCES
     LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     AuditLog/AuditLog.cpp)
 
-# Create executable
-add_executable(forensic_analyzer ${SOURCES})
+# Create executable Create executable
+add_executable(forensic_analyzer main.cpp ${LIB_SOURCES})
 
 # Link libraries
 if(WIN32)
