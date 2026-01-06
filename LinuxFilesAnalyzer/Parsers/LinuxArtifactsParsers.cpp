@@ -263,6 +263,62 @@ void LinuxFilesAnalyzer::analyzeSSHArtifacts() {
             linuxDb_->insertSSHKeys(keys);
         }
     }
+
+    // Find known_hosts files
+    auto knownHostsFiles = queryFilesByPattern("%/.ssh/known_hosts");
+    for (const auto& file : knownHostsFiles) {
+        std::string extractPath = getExtractPath("ssh/" + std::to_string(file.inode) + "_known_hosts");
+        if (extractFileToPath(file.inode, extractPath)) {
+            // Extract username from path
+            std::string username = "unknown";
+            size_t homePos = file.path.find("/home/");
+            size_t rootPos = file.path.find("/root/");
+            
+            if (homePos != std::string::npos) {
+                size_t start = homePos + 6;
+                size_t end = file.path.find('/', start);
+                if (end != std::string::npos) {
+                    username = file.path.substr(start, end - start);
+                }
+            } else if (rootPos != std::string::npos) {
+                username = "root";
+            }
+
+            std::ifstream f(extractPath);
+            if (f.is_open()) {
+                std::string line;
+                while (std::getline(f, line)) {
+                    if (line.empty() || line[0] == '#') continue;
+
+                    SSHKnownHost host;
+                    host.username = username;
+
+                    std::istringstream ss(line);
+                    std::string hostname, keyType, publicKey;
+
+                    ss >> hostname >> keyType >> publicKey;
+
+                    // Check for hashed hostname format: |1|salt|hash
+                    if (hostname.find("|1|") == 0) {
+                        host.isHashed = true;
+                        host.hostname = hostname; // Keep the hash
+                    } else {
+                        host.isHashed = false;
+                        // Hostname can be comma-separated list
+                        host.hostname = hostname;
+                    }
+
+                    host.keyType = keyType;
+                    host.publicKey = publicKey;
+
+                    linuxDb_->insertSSHKnownHost(host);
+                }
+
+                AuditLog::instance().log("SYSTEM", "LINUX_SSH_KNOWN_HOSTS_PARSED",
+                                          "Parsed known_hosts for user " + username);
+            }
+        }
+    }
 }
 
 std::vector<SSHKeyInfo> LinuxFilesAnalyzer::parseAuthorizedKeys(const std::string& keysPath,
@@ -513,7 +569,104 @@ std::vector<CronJobEntry> LinuxFilesAnalyzer::parseCronFile(const std::string& c
 
 void LinuxFilesAnalyzer::analyzeSystemdServices() {
     std::cout << "Analyzing systemd services..." << std::endl;
-    // Placeholder - systemd analysis would require parsing unit files
+
+    // Find systemd service unit files
+    std::vector<std::string> systemdPaths = {
+        "%/etc/systemd/system/%.service",
+        "%/lib/systemd/system/%.service",
+        "%/usr/lib/systemd/system/%.service"
+    };
+
+    std::vector<SystemdServiceInfo> allServices;
+
+    for (const auto& pattern : systemdPaths) {
+        auto serviceFiles = queryFilesByPattern(pattern);
+        for (const auto& file : serviceFiles) {
+            // Skip symlinks and directories in the result
+            if (file.name.empty() || file.name[0] == '.') {
+                continue;
+            }
+
+            std::string extractPath = getExtractPath("systemd/" + file.name);
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream f(extractPath);
+                if (f.is_open()) {
+                    SystemdServiceInfo service;
+                    service.serviceName = file.name;
+                    service.unitFile = file.path;
+                    service.loadState = "loaded";
+                    service.activeState = "unknown"; // Can't determine from static file
+                    service.subState = "unknown";
+                    service.isEnabled = false;
+
+                    std::string line;
+                    std::string currentSection;
+
+                    while (std::getline(f, line)) {
+                        // Trim whitespace
+                        size_t start = line.find_first_not_of(" \t");
+                        if (start == std::string::npos) continue;
+                        line = line.substr(start);
+
+                        // Skip comments
+                        if (line.empty() || line[0] == '#' || line[0] == ';') {
+                            continue;
+                        }
+
+                        // Check for section header
+                        if (line[0] == '[' && line.back() == ']') {
+                            currentSection = line.substr(1, line.length() - 2);
+                            continue;
+                        }
+
+                        // Parse key=value
+                        size_t eqPos = line.find('=');
+                        if (eqPos == std::string::npos) continue;
+
+                        std::string key = line.substr(0, eqPos);
+                        std::string value = line.substr(eqPos + 1);
+
+                        // Trim key and value
+                        while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) {
+                            key.pop_back();
+                        }
+                        size_t valStart = value.find_first_not_of(" \t");
+                        if (valStart != std::string::npos) {
+                            value = value.substr(valStart);
+                        }
+
+                        // Extract relevant fields
+                        if (currentSection == "Unit") {
+                            if (key == "Description") {
+                                service.description = value;
+                            }
+                        } else if (currentSection == "Service") {
+                            if (key == "ExecStart") {
+                                service.execStart = value;
+                            } else if (key == "User") {
+                                service.user = value;
+                            }
+                        } else if (currentSection == "Install") {
+                            if (key == "WantedBy" || key == "RequiredBy") {
+                                // If WantedBy exists, service can be enabled
+                                service.isEnabled = true; // Approximation
+                            }
+                        }
+                    }
+
+                    allServices.push_back(service);
+                }
+            }
+        }
+    }
+
+    // Insert all services to database
+    for (const auto& service : allServices) {
+        linuxDb_->insertSystemdService(service);
+    }
+
+    AuditLog::instance().log("SYSTEM", "LINUX_SYSTEMD_PARSED",
+                              "Parsed " + std::to_string(allServices.size()) + " systemd services");
 }
 
 void LinuxFilesAnalyzer::analyzeInstalledPackages() {
@@ -583,7 +736,95 @@ std::vector<PackageInfo> LinuxFilesAnalyzer::parseDpkgStatus(const std::string& 
 
 void LinuxFilesAnalyzer::analyzeNetworkConfiguration() {
     std::cout << "Analyzing network configuration..." << std::endl;
-    // Placeholder for network configuration analysis
+
+    // Parse /etc/network/interfaces (Debian-based systems)
+    auto interfacesFiles = queryFilesByPattern("%/etc/network/interfaces");
+    for (const auto& file : interfacesFiles) {
+        std::string extractPath = getExtractPath("network/interfaces");
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream f(extractPath);
+            if (f.is_open()) {
+                std::string line;
+                NetworkConnection conn;
+                std::string currentInterface;
+
+                while (std::getline(f, line)) {
+                    // Trim
+                    size_t start = line.find_first_not_of(" \t");
+                    if (start == std::string::npos) continue;
+                    line = line.substr(start);
+                    
+                    if (line.empty() || line[0] == '#') continue;
+
+                    std::istringstream ss(line);
+                    std::string keyword;
+                    ss >> keyword;
+
+                    if (keyword == "iface") {
+                        // iface eth0 inet static
+                        std::string iface, family, method;
+                        ss >> iface >> family >> method;
+                        currentInterface = iface;
+                    } else if (keyword == "address" && !currentInterface.empty()) {
+                        std::string addr;
+                        ss >> addr;
+                        conn.localAddress = addr;
+                        conn.protocol = "interface:" + currentInterface;
+                        conn.state = "configured";
+                        linuxDb_->insertNetworkConnection(conn);
+                    }
+                }
+            }
+        }
+    }
+
+    // Parse /etc/resolv.conf for DNS configuration
+    auto resolvFiles = queryFilesByPattern("%/etc/resolv.conf");
+    for (const auto& file : resolvFiles) {
+        std::string extractPath = getExtractPath("network/resolv.conf");
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream f(extractPath);
+            if (f.is_open()) {
+                std::string line;
+                while (std::getline(f, line)) {
+                    size_t start = line.find_first_not_of(" \t");
+                    if (start == std::string::npos) continue;
+                    line = line.substr(start);
+                    
+                    if (line.empty() || line[0] == '#') continue;
+
+                    std::istringstream ss(line);
+                    std::string keyword;
+                    ss >> keyword;
+
+                    if (keyword == "nameserver") {
+                        std::string dns;
+                        ss >> dns;
+                        NetworkConnection conn;
+                        conn.protocol = "dns";
+                        conn.remoteAddress = dns;
+                        conn.remotePort = 53;
+                        conn.state = "configured";
+                        linuxDb_->insertNetworkConnection(conn);
+                    }
+                }
+            }
+        }
+    }
+
+    // Parse /etc/hosts for static host mappings
+    auto hostsFiles = queryFilesByPattern("%/etc/hosts");
+    for (const auto& file : hostsFiles) {
+        std::string extractPath = getExtractPath("network/hosts");
+        if (extractFileToPath(file.inode, extractPath)) {
+            // Just log that we found hosts file; detailed parsing could be added
+            AuditLog::instance().log("SYSTEM", "LINUX_HOSTS_FOUND",
+                                      "Found /etc/hosts file at " + file.path);
+        }
+    }
+
+    AuditLog::instance().log("SYSTEM", "LINUX_NETWORK_CONFIG_PARSED",
+                              "Analyzed network configuration files");
 }
 
 // ============================================================================
@@ -592,21 +833,198 @@ void LinuxFilesAnalyzer::analyzeNetworkConfiguration() {
 
 void LinuxFilesAnalyzer::analyzeFirewallRules() {
     std::cout << "Analyzing firewall rules..." << std::endl;
-    // Placeholder for firewall rules analysis
+
+    // Common locations for iptables rules
+    std::vector<std::string> iptablesPaths = {
+        "%/etc/iptables/rules.v4",
+        "%/etc/iptables/rules.v6",
+        "%/etc/iptables.rules",
+        "%/etc/sysconfig/iptables",
+        "%/etc/ufw/user.rules",
+        "%/etc/ufw/user6.rules"
+    };
+
+    std::vector<FirewallRule> allRules;
+
+    for (const auto& pattern : iptablesPaths) {
+        auto ruleFiles = queryFilesByPattern(pattern);
+        for (const auto& file : ruleFiles) {
+            std::string extractPath = getExtractPath("firewall/" + file.name);
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream f(extractPath);
+                if (f.is_open()) {
+                    std::string line;
+                    std::string currentTable = "filter"; // Default table
+                    std::string currentChain;
+
+                    while (std::getline(f, line)) {
+                        // Trim
+                        size_t start = line.find_first_not_of(" \t");
+                        if (start == std::string::npos) continue;
+                        line = line.substr(start);
+
+                        if (line.empty() || line[0] == '#') continue;
+
+                        // Table header: *filter, *nat, *mangle
+                        if (line[0] == '*') {
+                            currentTable = line.substr(1);
+                            continue;
+                        }
+
+                        // COMMIT - end of table
+                        if (line == "COMMIT") {
+                            continue;
+                        }
+
+                        // Chain definition: :INPUT ACCEPT [0:0]
+                        if (line[0] == ':') {
+                            size_t spacePos = line.find(' ');
+                            if (spacePos != std::string::npos) {
+                                currentChain = line.substr(1, spacePos - 1);
+                            }
+                            continue;
+                        }
+
+                        // Rule: -A INPUT -p tcp --dport 22 -j ACCEPT
+                        if (line.find("-A ") == 0 || line.find("-I ") == 0) {
+                            FirewallRule rule;
+                            rule.table = currentTable;
+                            rule.ruleSpec = line;
+
+                            std::istringstream ss(line);
+                            std::string token;
+
+                            while (ss >> token) {
+                                if (token == "-A" || token == "-I") {
+                                    ss >> rule.chain;
+                                } else if (token == "-p") {
+                                    ss >> rule.protocol;
+                                } else if (token == "-s") {
+                                    ss >> rule.source;
+                                } else if (token == "-d") {
+                                    ss >> rule.destination;
+                                } else if (token == "--sport") {
+                                    std::string port;
+                                    ss >> port;
+                                    try { rule.sourcePort = std::stoi(port); } 
+                                    catch (...) { rule.sourcePort = -1; }
+                                } else if (token == "--dport") {
+                                    std::string port;
+                                    ss >> port;
+                                    try { rule.destinationPort = std::stoi(port); } 
+                                    catch (...) { rule.destinationPort = -1; }
+                                } else if (token == "-j") {
+                                    ss >> rule.action;
+                                }
+                            }
+
+                            allRules.push_back(rule);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Insert all rules to database
+    for (const auto& rule : allRules) {
+        linuxDb_->insertFirewallRule(rule);
+    }
+
+    AuditLog::instance().log("SYSTEM", "LINUX_FIREWALL_PARSED",
+                              "Parsed " + std::to_string(allRules.size()) + " firewall rules");
 }
 
 void LinuxFilesAnalyzer::analyzeAuditLogs() {
     std::cout << "Analyzing audit logs..." << std::endl;
 
     auto auditFiles = queryFilesByPattern("%/var/log/audit/audit.log%");
+    std::vector<LinuxAuditLogEntry> allEntries;
+
     for (const auto& file : auditFiles) {
         std::string extractPath = getExtractPath("audit/" + file.name);
         if (extractFileToPath(file.inode, extractPath)) {
-            // Basic parsing - audit logs have a specific format
-            auto entries = parseLogFile(extractPath, "audit");
-            linuxDb_->insertLogEntries(entries);
+            std::ifstream f(extractPath);
+            if (f.is_open()) {
+                std::string line;
+                
+                // auditd format: type=TYPE msg=audit(TIMESTAMP:SERIAL): key=value ...
+                std::regex auditPattern(R"(type=(\w+)\s+msg=audit\((\d+)\.(\d+):(\d+)\):(.*))");;
+
+                while (std::getline(f, line)) {
+                    if (line.empty()) continue;
+
+                    std::smatch match;
+                    if (std::regex_search(line, match, auditPattern)) {
+                        LinuxAuditLogEntry entry;
+                        entry.type = match[1].str();
+                        
+                        // Parse timestamp (seconds.milliseconds)
+                        try {
+                            entry.timestamp = std::stoll(match[2].str());
+                        } catch (...) {
+                            entry.timestamp = 0;
+                        }
+                        
+                        // Parse serial number
+                        try {
+                            entry.serialNumber = std::stoi(match[4].str());
+                        } catch (...) {
+                            entry.serialNumber = 0;
+                        }
+                        
+                        entry.message = line;
+                        
+                        // Extract additional fields from the message part
+                        std::string msgPart = match[5].str();
+                        
+                        // Look for common fields
+                        size_t resultPos = msgPart.find("res=");
+                        if (resultPos != std::string::npos) {
+                            size_t start = resultPos + 4;
+                            size_t end = msgPart.find(' ', start);
+                            entry.result = msgPart.substr(start, end - start);
+                        }
+                        
+                        size_t uidPos = msgPart.find("auid=");
+                        if (uidPos != std::string::npos) {
+                            size_t start = uidPos + 5;
+                            size_t end = msgPart.find(' ', start);
+                            entry.subject = "auid=" + msgPart.substr(start, end - start);
+                        }
+                        
+                        size_t exePos = msgPart.find("exe=\"");
+                        if (exePos != std::string::npos) {
+                            size_t start = exePos + 5;
+                            size_t end = msgPart.find('"', start);
+                            if (end != std::string::npos) {
+                                entry.object = msgPart.substr(start, end - start);
+                            }
+                        }
+                        
+                        // Determine action from type
+                        if (entry.type.find("SYSCALL") != std::string::npos) {
+                            entry.action = "syscall";
+                        } else if (entry.type.find("USER_") != std::string::npos) {
+                            entry.action = "user_action";
+                        } else if (entry.type.find("LOGIN") != std::string::npos) {
+                            entry.action = "login";
+                        } else {
+                            entry.action = "audit";
+                        }
+                        
+                        allEntries.push_back(entry);
+                    }
+                }
+            }
         }
     }
+
+    // Insert all entries to database
+    linuxDb_->insertAuditLogs(allEntries);
+
+    AuditLog::instance().log("SYSTEM", "LINUX_AUDIT_LOGS_PARSED",
+                              "Parsed " + std::to_string(allEntries.size()) + " audit log entries");
 }
 
 // ============================================================================

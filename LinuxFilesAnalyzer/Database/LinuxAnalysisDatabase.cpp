@@ -348,8 +348,33 @@ bool LinuxAnalysisDatabase::insertLogEntries(const std::vector<LinuxLogEntry>& e
 }
 
 std::vector<LinuxLogEntry> LinuxAnalysisDatabase::queryLogEntries(const std::string& whereClause) {
-    // Stub implementation
-    return {};
+    std::vector<LinuxLogEntry> entries;
+    std::string sql = "SELECT log_file, timestamp, unix_timestamp, hostname, process, pid, message, level, facility FROM linux_log_entries";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return entries;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxLogEntry entry;
+        entry.logFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        entry.timestamp = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        entry.unixTimestamp = sqlite3_column_int64(stmt, 2);
+        entry.hostname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        entry.process = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        entry.pid = sqlite3_column_int(stmt, 5);
+        entry.message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        entry.level = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        entry.facility = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        entries.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    return entries;
 }
 
 // ============================================================================
@@ -400,7 +425,41 @@ bool LinuxAnalysisDatabase::insertUserInfos(const std::vector<LinuxUserInfo>& us
 }
 
 std::vector<LinuxUserInfo> LinuxAnalysisDatabase::queryUserAccounts(const std::string& whereClause) {
-    return {};
+    std::vector<LinuxUserInfo> users;
+    std::string sql = "SELECT username, uid, gid, full_name, home_directory, shell, password_hash, "
+                      "last_password_change, password_max_age, password_min_age, password_warn_days, "
+                      "inactive_days, account_expires, is_locked, is_system_account FROM linux_users";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return users;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxUserInfo user;
+        user.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        user.uid = sqlite3_column_int(stmt, 1);
+        user.gid = sqlite3_column_int(stmt, 2);
+        user.fullName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        user.homeDirectory = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        user.shell = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        user.passwordHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        user.lastPasswordChange = sqlite3_column_int64(stmt, 7);
+        user.passwordMaxAge = sqlite3_column_int(stmt, 8);
+        user.passwordMinAge = sqlite3_column_int(stmt, 9);
+        user.passwordWarnDays = sqlite3_column_int(stmt, 10);
+        user.inactiveDays = sqlite3_column_int(stmt, 11);
+        user.accountExpires = sqlite3_column_int64(stmt, 12);
+        user.isLocked = sqlite3_column_int(stmt, 13) != 0;
+        user.isSystemAccount = sqlite3_column_int(stmt, 14) != 0;
+        users.push_back(user);
+    }
+    
+    sqlite3_finalize(stmt);
+    return users;
 }
 
 // ============================================================================
@@ -431,7 +490,33 @@ bool LinuxAnalysisDatabase::insertGroupInfo(const LinuxGroupInfo& group) {
 }
 
 std::vector<LinuxGroupInfo> LinuxAnalysisDatabase::queryGroups(const std::string& whereClause) {
-    return {};
+    std::vector<LinuxGroupInfo> groups;
+    std::string sql = "SELECT group_name, gid, members FROM linux_groups";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return groups;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxGroupInfo group;
+        group.groupName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        group.gid = sqlite3_column_int(stmt, 1);
+        std::string membersStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        // Parse comma-separated members
+        std::istringstream ss(membersStr);
+        std::string member;
+        while (std::getline(ss, member, ',')) {
+            if (!member.empty()) group.members.push_back(member);
+        }
+        groups.push_back(group);
+    }
+    
+    sqlite3_finalize(stmt);
+    return groups;
 }
 
 // ============================================================================
@@ -473,7 +558,32 @@ bool LinuxAnalysisDatabase::insertLoginRecords(const std::vector<LinuxLoginRecor
 }
 
 std::vector<LinuxLoginRecord> LinuxAnalysisDatabase::queryLoginRecords(const std::string& whereClause) {
-    return {};
+    std::vector<LinuxLoginRecord> records;
+    std::string sql = "SELECT username, terminal, remote_host, login_time, logout_time, login_type, is_success, pid FROM linux_login_records";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return records;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxLoginRecord record;
+        record.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        record.terminal = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        record.remoteHost = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        record.loginTime = sqlite3_column_int64(stmt, 3);
+        record.logoutTime = sqlite3_column_int64(stmt, 4);
+        record.loginType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        record.isSuccess = sqlite3_column_int(stmt, 6) != 0;
+        record.pid = sqlite3_column_int(stmt, 7);
+        records.push_back(record);
+    }
+    
+    sqlite3_finalize(stmt);
+    return records;
 }
 
 // ============================================================================
@@ -513,7 +623,30 @@ bool LinuxAnalysisDatabase::insertShellHistories(const std::vector<ShellHistoryE
 }
 
 std::vector<ShellHistoryEntry> LinuxAnalysisDatabase::queryShellHistory(const std::string& whereClause) {
-    return {};
+    std::vector<ShellHistoryEntry> entries;
+    std::string sql = "SELECT username, shell_type, command, timestamp, line_number, history_file FROM linux_shell_history";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return entries;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ShellHistoryEntry entry;
+        entry.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        entry.shellType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        entry.command = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        entry.timestamp = sqlite3_column_int64(stmt, 3);
+        entry.lineNumber = sqlite3_column_int(stmt, 4);
+        entry.historyFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        entries.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    return entries;
 }
 
 // ============================================================================
@@ -556,7 +689,33 @@ bool LinuxAnalysisDatabase::insertCronJobs(const std::vector<CronJobEntry>& jobs
 }
 
 std::vector<CronJobEntry> LinuxAnalysisDatabase::queryCronJobs(const std::string& whereClause) {
-    return {};
+    std::vector<CronJobEntry> jobs;
+    std::string sql = "SELECT username, minute, hour, day_of_month, month, day_of_week, command, cron_file, cron_type FROM linux_cron_jobs";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return jobs;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        CronJobEntry job;
+        job.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        job.minute = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        job.hour = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        job.dayOfMonth = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        job.month = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        job.dayOfWeek = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        job.command = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        job.cronFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        job.cronType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        jobs.push_back(job);
+    }
+    
+    sqlite3_finalize(stmt);
+    return jobs;
 }
 
 // ============================================================================
@@ -596,7 +755,30 @@ bool LinuxAnalysisDatabase::insertSSHKeys(const std::vector<SSHKeyInfo>& keys) {
 }
 
 std::vector<SSHKeyInfo> LinuxAnalysisDatabase::querySSHKeys(const std::string& whereClause) {
-    return {};
+    std::vector<SSHKeyInfo> keys;
+    std::string sql = "SELECT username, key_type, public_key, key_path, comment, options FROM linux_ssh_keys";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return keys;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SSHKeyInfo key;
+        key.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        key.keyType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        key.publicKey = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        key.keyPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        key.comment = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        key.options = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        keys.push_back(key);
+    }
+    
+    sqlite3_finalize(stmt);
+    return keys;
 }
 
 // ============================================================================
@@ -624,7 +806,29 @@ bool LinuxAnalysisDatabase::insertSSHKnownHost(const SSHKnownHost& host) {
 }
 
 std::vector<SSHKnownHost> LinuxAnalysisDatabase::querySSHKnownHosts(const std::string& whereClause) {
-    return {};
+    std::vector<SSHKnownHost> hosts;
+    std::string sql = "SELECT username, hostname, key_type, public_key, is_hashed FROM linux_ssh_known_hosts";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return hosts;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SSHKnownHost host;
+        host.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        host.hostname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        host.keyType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        host.publicKey = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        host.isHashed = sqlite3_column_int(stmt, 4) != 0;
+        hosts.push_back(host);
+    }
+    
+    sqlite3_finalize(stmt);
+    return hosts;
 }
 
 // ============================================================================
@@ -666,7 +870,32 @@ bool LinuxAnalysisDatabase::insertPackageInfos(const std::vector<PackageInfo>& p
 }
 
 std::vector<PackageInfo> LinuxAnalysisDatabase::queryPackages(const std::string& whereClause) {
-    return {};
+    std::vector<PackageInfo> packages;
+    std::string sql = "SELECT name, version, architecture, install_time, package_manager, status, description, maintainer FROM linux_packages";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return packages;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        PackageInfo pkg;
+        pkg.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        pkg.version = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        pkg.architecture = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        pkg.installTime = sqlite3_column_int64(stmt, 3);
+        pkg.packageManager = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        pkg.status = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        pkg.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        pkg.maintainer = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        packages.push_back(pkg);
+    }
+    
+    sqlite3_finalize(stmt);
+    return packages;
 }
 
 // ============================================================================
@@ -699,7 +928,34 @@ bool LinuxAnalysisDatabase::insertNetworkConnection(const NetworkConnection& con
 }
 
 std::vector<NetworkConnection> LinuxAnalysisDatabase::queryNetworkConnections(const std::string& whereClause) {
-    return {};
+    std::vector<NetworkConnection> conns;
+    std::string sql = "SELECT protocol, local_address, local_port, remote_address, remote_port, state, uid, inode, process, pid FROM linux_network_connections";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return conns;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        NetworkConnection conn;
+        conn.protocol = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        conn.localAddress = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        conn.localPort = sqlite3_column_int(stmt, 2);
+        conn.remoteAddress = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        conn.remotePort = sqlite3_column_int(stmt, 4);
+        conn.state = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        conn.uid = sqlite3_column_int(stmt, 6);
+        conn.inode = sqlite3_column_int(stmt, 7);
+        conn.process = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        conn.pid = sqlite3_column_int(stmt, 9);
+        conns.push_back(conn);
+    }
+    
+    sqlite3_finalize(stmt);
+    return conns;
 }
 
 // ============================================================================
@@ -731,7 +987,33 @@ bool LinuxAnalysisDatabase::insertSystemdService(const SystemdServiceInfo& servi
 }
 
 std::vector<SystemdServiceInfo> LinuxAnalysisDatabase::querySystemdServices(const std::string& whereClause) {
-    return {};
+    std::vector<SystemdServiceInfo> services;
+    std::string sql = "SELECT service_name, description, load_state, active_state, sub_state, unit_file, exec_start, user, is_enabled FROM linux_systemd_services";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return services;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SystemdServiceInfo service;
+        service.serviceName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        service.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        service.loadState = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        service.activeState = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        service.subState = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        service.unitFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        service.execStart = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        service.user = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        service.isEnabled = sqlite3_column_int(stmt, 8) != 0;
+        services.push_back(service);
+    }
+    
+    sqlite3_finalize(stmt);
+    return services;
 }
 
 // ============================================================================
@@ -767,7 +1049,35 @@ bool LinuxAnalysisDatabase::insertKernelModule(const KernelModuleInfo& module) {
 }
 
 std::vector<KernelModuleInfo> LinuxAnalysisDatabase::queryKernelModules(const std::string& whereClause) {
-    return {};
+    std::vector<KernelModuleInfo> modules;
+    std::string sql = "SELECT module_name, size, used_count, used_by, state, filename FROM linux_kernel_modules";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return modules;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        KernelModuleInfo module;
+        module.moduleName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        module.size = sqlite3_column_int64(stmt, 1);
+        module.usedCount = sqlite3_column_int(stmt, 2);
+        std::string usedByStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        std::istringstream ss(usedByStr);
+        std::string mod;
+        while (std::getline(ss, mod, ',')) {
+            if (!mod.empty()) module.usedBy.push_back(mod);
+        }
+        module.state = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        module.filename = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        modules.push_back(module);
+    }
+    
+    sqlite3_finalize(stmt);
+    return modules;
 }
 
 // ============================================================================
@@ -799,7 +1109,33 @@ bool LinuxAnalysisDatabase::insertFirewallRule(const FirewallRule& rule) {
 }
 
 std::vector<FirewallRule> LinuxAnalysisDatabase::queryFirewallRules(const std::string& whereClause) {
-    return {};
+    std::vector<FirewallRule> rules;
+    std::string sql = "SELECT chain, table_name, protocol, source, destination, source_port, destination_port, action, rule_spec FROM linux_firewall_rules";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return rules;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        FirewallRule rule;
+        rule.chain = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        rule.table = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        rule.protocol = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        rule.source = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        rule.destination = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        rule.sourcePort = sqlite3_column_int(stmt, 5);
+        rule.destinationPort = sqlite3_column_int(stmt, 6);
+        rule.action = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        rule.ruleSpec = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        rules.push_back(rule);
+    }
+    
+    sqlite3_finalize(stmt);
+    return rules;
 }
 
 // ============================================================================
@@ -841,7 +1177,32 @@ bool LinuxAnalysisDatabase::insertAuditLogs(const std::vector<LinuxAuditLogEntry
 }
 
 std::vector<LinuxAuditLogEntry> LinuxAnalysisDatabase::queryAuditLogs(const std::string& whereClause) {
-    return {};
+    std::vector<LinuxAuditLogEntry> entries;
+    std::string sql = "SELECT timestamp, serial_number, type, message, subject, object, action, result FROM linux_audit_logs";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return entries;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxAuditLogEntry entry;
+        entry.timestamp = sqlite3_column_int64(stmt, 0);
+        entry.serialNumber = sqlite3_column_int(stmt, 1);
+        entry.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        entry.message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        entry.subject = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        entry.object = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        entry.action = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        entry.result = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        entries.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    return entries;
 }
 
 // ============================================================================
@@ -869,5 +1230,27 @@ bool LinuxAnalysisDatabase::insertBrowserProfile(const LinuxBrowserProfile& prof
 }
 
 std::vector<LinuxBrowserProfile> LinuxAnalysisDatabase::queryBrowserProfiles(const std::string& whereClause) {
-    return {};
+    std::vector<LinuxBrowserProfile> profiles;
+    std::string sql = "SELECT browser_type, browser_name, profile_name, profile_path, username FROM linux_browser_profiles";
+    if (!whereClause.empty()) {
+        sql += " WHERE " + whereClause;
+    }
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return profiles;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxBrowserProfile profile;
+        profile.browserType = static_cast<LinuxBrowserType>(sqlite3_column_int(stmt, 0));
+        profile.browserName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        profile.profileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        profile.profilePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        profile.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        profiles.push_back(profile);
+    }
+    
+    sqlite3_finalize(stmt);
+    return profiles;
 }
