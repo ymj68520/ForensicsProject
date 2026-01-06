@@ -7,6 +7,7 @@
 #include "WindowsAmcacheParser.h"
 #include "WindowsSrumParser.h"
 #include "WindowsBrowserParser.h"
+#include "WindowsJumpListParser.h"
 #include "AuditLog/AuditLog.h"
 #include <fstream>
 #include <ctime>
@@ -135,38 +136,75 @@ LnkFileInfo WindowsFilesAnalyzer::parseLnkFile(const std::string& lnkPath) {
 
 void WindowsFilesAnalyzer::analyzeJumpLists() {
     std::cout << "Analyzing Jump Lists..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "JUMPLIST_ANALYSIS_START",
+        "Starting Jump List analysis");
     
-    // AutomaticDestinations
+    int processedFiles = 0;
+    int totalEntries = 0;
+    
+    // AutomaticDestinations (Recent/Frequent items - OLE format)
     std::vector<FileRecord> autoDest = queryFilesByPattern("%/AutomaticDestinations/%.automaticDestinations-ms");
     
     for (const auto& file : autoDest) {
         std::string extractPath = getExtractPath("jumplists/auto/" + file.name);
-        extractFileToPath(file.inode, extractPath);
-        // Parse OLE compound file structure...
+        
+        if (extractFileToPath(file.inode, extractPath)) {
+            auto entries = parseJumpListFile(extractPath);
+            
+            if (!entries.empty()) {
+                for (const auto& entry : entries) {
+                    windowsDb_->insertJumpListEntry(entry);
+                }
+                processedFiles++;
+                totalEntries += entries.size();
+                
+                std::cout << "  Processed AutoDest: " << file.name 
+                         << " (" << entries.size() << " entries)" << std::endl;
+            }
+        }
     }
     
-    // CustomDestinations
+    // CustomDestinations (Pinned items)
     std::vector<FileRecord> customDest = queryFilesByPattern("%/CustomDestinations/%.customDestinations-ms");
     
     for (const auto& file : customDest) {
         std::string extractPath = getExtractPath("jumplists/custom/" + file.name);
-        extractFileToPath(file.inode, extractPath);
+        
+        if (extractFileToPath(file.inode, extractPath)) {
+            auto entries = parseJumpListFile(extractPath);
+            
+            if (!entries.empty()) {
+                for (const auto& entry : entries) {
+                    windowsDb_->insertJumpListEntry(entry);
+                }
+                processedFiles++;
+                totalEntries += entries.size();
+                
+                std::cout << "  Processed CustomDest: " << file.name 
+                         << " (" << entries.size() << " entries)" << std::endl;
+            }
+        }
     }
+    
+    std::cout << "  Processed " << processedFiles << " Jump List files"
+             << " with " << totalEntries << " total entries." << std::endl;
+    
+    AuditLog::instance().log("SYSTEM", "JUMPLIST_ANALYSIS_COMPLETE",
+        "Jump List analysis completed: " + std::to_string(processedFiles) + 
+        " files, " + std::to_string(totalEntries) + " entries");
 }
 
 std::vector<JumpListEntry> WindowsFilesAnalyzer::parseJumpListFile(const std::string& jumpListPath) {
-    // TODO: Jump Lists are OLE Compound Files (CFBF format) containing streams that are LNK files.
-    // Full implementation requires OLE parsing library (e.g., libcompoundfile).
-    // Each stream within the compound file is an embedded LNK file that can be parsed with LnkParser.
-    // For now, return empty vector - Jump List analysis is deferred.
-    // 
-    // Structure:
-    // - AutomaticDestinations: App-specific recent/frequent items (OLE format)
-    // - CustomDestinations: User-pinned items (different format, less complex)
+    // Use the new JumpListParser with libolecf support
+    JumpListParser parser(jumpListPath);
     
-    AuditLog::instance().log("INFO", "JUMPLIST_DEFERRED",
-        "Jump List parsing not implemented (requires OLE library): " + jumpListPath);
-    return {};
+    if (!parser.parse()) {
+        AuditLog::instance().log("WARNING", "JUMPLIST_PARSE_FAILED",
+            "Failed to parse Jump List: " + jumpListPath + " - " + parser.getLastError());
+        return {};
+    }
+    
+    return parser.getEntries();
 }
 
 // --- Recycle Bin Analysis ---

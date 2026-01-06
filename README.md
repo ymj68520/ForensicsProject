@@ -44,6 +44,7 @@ sudo apt-get install -y libewf-dev
 
 # 安装 Windows 系统文件分析支持
 sudo apt-get install -y libhivex-dev libevtx-dev libevtx-utils
+sudo apt-get install -y libolecf-dev libolecf-utils
 
 # 安装 HTTP 服务支持
 sudo apt-get install libasio-dev nlohmann-json3-dev

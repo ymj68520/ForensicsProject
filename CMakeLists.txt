@@ -17,6 +17,7 @@ pkg_check_modules(HIVEX REQUIRED hivex)
 pkg_check_modules(LIBEVTX REQUIRED libevtx)
 pkg_check_modules(LIBBFIO REQUIRED libbfio)
 pkg_check_modules(LIBESEDB REQUIRED libesedb)
+pkg_check_modules(LIBOLECF REQUIRED libolecf)
 
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
@@ -75,12 +76,19 @@ include_directories(
   ${LIBEVTX_INCLUDE_DIRS}
   ${LIBBFIO_INCLUDE_DIRS}
   ${LIBESEDB_INCLUDE_DIRS}
+  ${LIBOLECF_INCLUDE_DIRS}
   # WindowsFilesAnalyzer includes
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Common
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Core
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Parsers
+  # LinuxFilesAnalyzer includes
+  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer
+  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Parsers
   # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
 )
 
@@ -114,6 +122,13 @@ set(SOURCES
     WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
     WindowsFilesAnalyzer/Parsers/WindowsBrowserParser.cpp
     WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
+    WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
+    LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
+    LinuxFilesAnalyzer/Database/LinuxAnalysisDatabase.cpp
+    LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
+    LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
+    LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
+    LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     AuditLog/AuditLog.cpp)
 
 # Create executable
@@ -134,6 +149,7 @@ else()
     ${LIBEVTX_LIBRARIES}
     ${LIBBFIO_LIBRARIES}
     ${LIBESEDB_LIBRARIES}
+    ${LIBOLECF_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 

@@ -683,61 +683,400 @@ bool WindowsAnalysisDatabase::insertEventLogEntries(const std::vector<EventLogEn
     return commitTransaction();
 }
 
-// Stub implementations for query methods (not used in current implementation)
+// ============================================================================
+// Query Method Implementations
+// ============================================================================
+
 std::vector<RegistryValue> WindowsAnalysisDatabase::queryRegistryValues(const std::string& whereClause) {
-    return {};
+    std::vector<RegistryValue> results;
+    std::string sql = "SELECT hive_path, hive_type, key_path, value_name, value_type, value_data, last_modified, forensic_importance FROM registry_values";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        RegistryValue value;
+        value.hivePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        value.hiveType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        value.keyPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        value.valueName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        value.valueType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        value.valueData = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        value.lastModified = sqlite3_column_int64(stmt, 6);
+        value.forensicImportance = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)) ?: "";
+        results.push_back(value);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<EventLogEntry> WindowsAnalysisDatabase::queryEventLogs(const std::string& whereClause) {
-    return {};
+    std::vector<EventLogEntry> results;
+    std::string sql = "SELECT record_id, log_source, event_id, level, timestamp, source, message, computer_name, user_sid, channel FROM event_logs";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        EventLogEntry entry;
+        entry.recordId = sqlite3_column_int64(stmt, 0);
+        entry.logSource = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.eventId = sqlite3_column_int(stmt, 2);
+        entry.level = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        entry.timestamp = sqlite3_column_int64(stmt, 4);
+        entry.source = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        entry.message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) ?: "";
+        entry.computerName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)) ?: "";
+        entry.userSid = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)) ?: "";
+        entry.channel = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)) ?: "";
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<PrefetchInfo> WindowsAnalysisDatabase::queryPrefetchFiles(const std::string& whereClause) {
-    return {};
+    std::vector<PrefetchInfo> results;
+    std::string sql = "SELECT file_path, executable_name, executable_path, prefetch_hash, run_count, last_run_time, creation_time, referenced_files, referenced_directories FROM prefetch_files";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        PrefetchInfo info;
+        info.filePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        info.executableName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        info.executablePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        info.prefetchHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        info.runCount = sqlite3_column_int(stmt, 4);
+        info.lastRunTime = sqlite3_column_int64(stmt, 5);
+        info.creationTime = sqlite3_column_int64(stmt, 6);
+        // Parse comma-separated referenced files/directories
+        std::string refFilesStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)) ?: "";
+        std::string refDirsStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)) ?: "";
+        // Split by comma (simplified parsing)
+        if (!refFilesStr.empty()) {
+            std::istringstream ss(refFilesStr);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                if (!item.empty()) info.referencedFiles.push_back(item);
+            }
+        }
+        if (!refDirsStr.empty()) {
+            std::istringstream ss(refDirsStr);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                if (!item.empty()) info.referencedDirectories.push_back(item);
+            }
+        }
+        results.push_back(info);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<LnkFileInfo> WindowsAnalysisDatabase::queryLnkFiles(const std::string& whereClause) {
-    return {};
+    std::vector<LnkFileInfo> results;
+    std::string sql = "SELECT lnk_path, target_path, working_directory, arguments, icon_location, creation_time, modification_time, access_time, target_size, drive_type, volume_serial, netbios_name, relative_path, description FROM lnk_files";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LnkFileInfo info;
+        info.lnkPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        info.targetPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        info.workingDirectory = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        info.arguments = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        info.iconLocation = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        info.creationTime = sqlite3_column_int64(stmt, 5);
+        info.modificationTime = sqlite3_column_int64(stmt, 6);
+        info.accessTime = sqlite3_column_int64(stmt, 7);
+        info.targetSize = sqlite3_column_int64(stmt, 8);
+        info.driveType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)) ?: "";
+        info.volumeSerial = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10)) ?: "";
+        info.netBiosName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11)) ?: "";
+        info.relativePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12)) ?: "";
+        info.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13)) ?: "";
+        results.push_back(info);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<JumpListEntry> WindowsAnalysisDatabase::queryJumpListEntries(const std::string& whereClause) {
-    return {};
+    std::vector<JumpListEntry> results;
+    std::string sql = "SELECT app_id, entry_path, entry_name, access_time, creation_time, access_count, is_pinned FROM jump_list_entries";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        JumpListEntry entry;
+        entry.appId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        entry.entryPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.entryName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        entry.accessTime = sqlite3_column_int64(stmt, 3);
+        entry.creationTime = sqlite3_column_int64(stmt, 4);
+        entry.accessCount = sqlite3_column_int(stmt, 5);
+        entry.isPinned = sqlite3_column_int(stmt, 6) != 0;
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<WindowsUserInfo> WindowsAnalysisDatabase::queryUserAccounts(const std::string& whereClause) {
-    return {};
+    std::vector<WindowsUserInfo> results;
+    std::string sql = "SELECT rid, username, full_name, comment, last_login, password_last_set, account_expires, password_expires, account_flags, is_admin, home_directory, profile_path FROM user_accounts";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        WindowsUserInfo user;
+        user.rid = sqlite3_column_int(stmt, 0);
+        user.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        user.fullName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        user.comment = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        user.lastLogin = sqlite3_column_int64(stmt, 4);
+        user.passwordLastSet = sqlite3_column_int64(stmt, 5);
+        user.accountExpires = sqlite3_column_int64(stmt, 6);
+        user.passwordExpires = sqlite3_column_int64(stmt, 7);
+        user.accountFlags = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)) ?: "";
+        user.isAdmin = sqlite3_column_int(stmt, 9) != 0;
+        user.homeDirectory = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10)) ?: "";
+        user.profilePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11)) ?: "";
+        results.push_back(user);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<USBDeviceInfo> WindowsAnalysisDatabase::queryUSBDevices(const std::string& whereClause) {
-    return {};
+    std::vector<USBDeviceInfo> results;
+    std::string sql = "SELECT vendor_id, product_id, serial_number, device_description, friendly_name, device_class, first_connected, last_connected, last_drive_letter FROM usb_devices";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        USBDeviceInfo device;
+        device.vendorId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        device.productId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        device.serialNumber = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        device.deviceDescription = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        device.friendlyName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        device.deviceClass = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        device.firstConnected = sqlite3_column_int64(stmt, 6);
+        device.lastConnected = sqlite3_column_int64(stmt, 7);
+        device.lastDriveLetter = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)) ?: "";
+        results.push_back(device);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<RecycleBinEntry> WindowsAnalysisDatabase::queryRecycleBinEntries(const std::string& whereClause) {
-    return {};
+    std::vector<RecycleBinEntry> results;
+    std::string sql = "SELECT recycle_file_path, original_path, file_name, deletion_time, original_size, user_sid FROM recycle_bin";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        RecycleBinEntry entry;
+        entry.recycleFilePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        entry.originalPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.fileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        entry.deletionTime = sqlite3_column_int64(stmt, 3);
+        entry.originalSize = sqlite3_column_int64(stmt, 4);
+        entry.userSid = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<BrowserArtifact> WindowsAnalysisDatabase::queryBrowserArtifacts(const std::string& whereClause) {
-    return {};
+    std::vector<BrowserArtifact> results;
+    std::string sql = "SELECT browser_name, artifact_type, url, title, timestamp, visit_count, local_path, file_size FROM browser_artifacts";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        BrowserArtifact artifact;
+        artifact.browserName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        artifact.artifactType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        artifact.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        artifact.title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        artifact.timestamp = sqlite3_column_int64(stmt, 4);
+        artifact.visitCount = sqlite3_column_int(stmt, 5);
+        artifact.localPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) ?: "";
+        artifact.fileSize = sqlite3_column_int64(stmt, 7);
+        results.push_back(artifact);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<MftEntryInfo> WindowsAnalysisDatabase::queryMftEntries(const std::string& whereClause) {
-    return {};
+    std::vector<MftEntryInfo> results;
+    std::string sql = "SELECT entry_number, file_name, file_path, parent_entry, logical_size, physical_size, creation_time, modification_time, access_time, mft_modification_time, fn_creation_time, fn_modification_time, is_directory, is_deleted, has_ads, permissions FROM mft_entries";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        MftEntryInfo entry;
+        entry.entryNumber = sqlite3_column_int64(stmt, 0);
+        entry.fileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.filePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        entry.parentEntry = sqlite3_column_int64(stmt, 3);
+        entry.logicalSize = sqlite3_column_int64(stmt, 4);
+        entry.physicalSize = sqlite3_column_int64(stmt, 5);
+        entry.creationTime = sqlite3_column_int64(stmt, 6);
+        entry.modificationTime = sqlite3_column_int64(stmt, 7);
+        entry.accessTime = sqlite3_column_int64(stmt, 8);
+        entry.mftModificationTime = sqlite3_column_int64(stmt, 9);
+        entry.fnCreationTime = sqlite3_column_int64(stmt, 10);
+        entry.fnModificationTime = sqlite3_column_int64(stmt, 11);
+        entry.isDirectory = sqlite3_column_int(stmt, 12) != 0;
+        entry.isDeleted = sqlite3_column_int(stmt, 13) != 0;
+        entry.hasAds = sqlite3_column_int(stmt, 14) != 0;
+        entry.permissions = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 15)) ?: "";
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<WindowsServiceInfo> WindowsAnalysisDatabase::queryWindowsServices(const std::string& whereClause) {
-    return {};
+    std::vector<WindowsServiceInfo> results;
+    std::string sql = "SELECT service_name, display_name, image_path, start_type, service_type, account_name, description, is_running FROM windows_services";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        WindowsServiceInfo service;
+        service.serviceName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        service.displayName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        service.imagePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        service.startType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        service.serviceType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        service.accountName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        service.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) ?: "";
+        service.isRunning = sqlite3_column_int(stmt, 7) != 0;
+        results.push_back(service);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<ScheduledTaskInfo> WindowsAnalysisDatabase::queryScheduledTasks(const std::string& whereClause) {
-    return {};
+    std::vector<ScheduledTaskInfo> results;
+    std::string sql = "SELECT task_name, task_path, author, description, action_type, action_path, arguments, trigger_type, last_run_time, next_run_time, status, run_as FROM scheduled_tasks";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ScheduledTaskInfo task;
+        task.taskName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        task.taskPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        task.author = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        task.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        task.actionType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        task.actionPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        task.arguments = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) ?: "";
+        task.triggerType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)) ?: "";
+        task.lastRunTime = sqlite3_column_int64(stmt, 8);
+        task.nextRunTime = sqlite3_column_int64(stmt, 9);
+        task.status = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10)) ?: "";
+        task.runAs = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11)) ?: "";
+        results.push_back(task);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<AmcacheEntry> WindowsAnalysisDatabase::queryAmcacheEntries(const std::string& whereClause) {
-    return {};
+    std::vector<AmcacheEntry> results;
+    std::string sql = "SELECT file_path, file_hash, file_name, company_name, product_name, product_version, file_description, file_size, link_time, last_modified, language FROM amcache_entries";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        AmcacheEntry entry;
+        entry.filePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        entry.fileHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.fileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        entry.companyName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        entry.productName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        entry.productVersion = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        entry.fileDescription = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) ?: "";
+        entry.fileSize = sqlite3_column_int64(stmt, 7);
+        entry.linkTime = sqlite3_column_int64(stmt, 8);
+        entry.lastModified = sqlite3_column_int64(stmt, 9);
+        entry.language = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10)) ?: "";
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 std::vector<SrumEntry> WindowsAnalysisDatabase::querySrumEntries(const std::string& whereClause) {
-    return {};
+    std::vector<SrumEntry> results;
+    std::string sql = "SELECT app_name, user_name, timestamp, bytes_received, bytes_sent, foreground_duration, background_duration, cpu_time_ms FROM srum_entries";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SrumEntry entry;
+        entry.appName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        entry.userName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.timestamp = sqlite3_column_int64(stmt, 2);
+        entry.bytesReceived = sqlite3_column_int64(stmt, 3);
+        entry.bytesSent = sqlite3_column_int64(stmt, 4);
+        entry.foregroundDuration = sqlite3_column_int64(stmt, 5);
+        entry.backgroundDuration = sqlite3_column_int64(stmt, 6);
+        entry.cpuTimeMs = sqlite3_column_int64(stmt, 7);
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
 }
 
 // ============================================================================
