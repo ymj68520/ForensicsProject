@@ -1,6 +1,15 @@
-###### 数字取证镜像分析工具
+# Forensics Project
 
-[TOC]
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![C++](https://img.shields.io/badge/language-C%2B%2B-00599C.svg)](https://isocpp.org/)
+
+A comprehensive digital forensics imaging analysis tool built on The Sleuth Kit.
+## Features
+
+- 多格式支持：E01 (EnCase) 和 DD (原始) 磁盘镜像
+- 跨平台分析：Windows (NTFS, FAT)、Linux (EXT2/3/4) 和 USB 设备文件系统
+- 三层数据库架构：原始数据库、事件数据库、文件数据库
+- 测试镜像生成脚本，包含多种文件类型
 
 # 数字取证镜像分析工具
 
@@ -15,6 +24,47 @@
   2. **事件数据库**: 文件系统事件时间线（创建、修改、访问、删除）
   3. **文件数据库**: 按类型分类的文件（13 个类别）
 - **测试镜像生成**: 提供脚本生成包含多种文件类型的测试镜像，支持 SQLite 数据库、图片、PDF、日志、脚本等。
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/ForensicsProject.git
+cd ForensicsProject
+
+# Install required dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y build-essential cmake git libsqlite3-dev libewf-dev libhivex-dev libevtx-dev libolecf-dev libasio-dev nlohmann-json3-dev libboost-system-dev libboost-thread-dev libesedb-dev
+
+# Build the project
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+## Usage
+
+```bash
+./forensic_analyzer <image_file_path>
+```
+
+### Output
+The tool generates three SQLite databases:
+- **_raw.db**: Complete file system metadata
+- **_events.db**: Timeline of file system events (created, modified, accessed)
+- **_files.db**: Files categorized by type (images, documents, etc.)
+
+## Documentation
+
+For detailed analysis and architecture documentation, please refer to [Project Analysis](docs/Project_Analysis.md).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 系统要求
 

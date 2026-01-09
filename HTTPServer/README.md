@@ -1,36 +1,37 @@
-# HTTPServer 模块
+# HTTPServer
 
-位置: `HTTPServer/`
+## Overview
+The HTTPServer module provides a RESTful API interface for the forensics analysis tool. Built on Crow and Boost.Asio, it allows users to submit analysis tasks asynchronously and query results via HTTP endpoints.
 
-目的
-- 提供 RESTful API 管理异步分析任务并查询结果，基于 Crow + Boost.Asio。
+## Features
+- **RESTful API**: Standard endpoints for task management.
+- **Asynchronous Processing**: Non-blocking task submission and execution via `TaskManager`.
+- **JSON Support**: All requests and responses use JSON format.
+- **Lightweight**: fast and efficient routing using Crow.
 
-主要文件
-- `HTTPserver.h`, `HTTPserver.cpp`
-- `TaskManager.h`
-- `SQLiteHelper.h`
-- `Utils.h`
+## Components
+- **Core**:
+  - `HTTPserver`: Defines API routes and handles HTTP requests.
+- **Helpers**:
+  - `TaskManager`: Manages the lifecycle and status of analysis tasks.
+  - `SQLiteHelper`: Assists in querying analysis results for API responses.
 
-API 端点
-- `POST /tasks` - 创建分析任务
-- `GET /tasks/{id}` - 查询任务状态
-- `GET /tasks/{id}/results` - 获取任务结果（若完成）
+## Usage
 
-运行示例
+### Start Server
 ```bash
 ./forensic_analyzer --http-server 8080
-curl -X POST http://localhost:8080/tasks -H "Content-Type: application/json" -d '{"image_path":"/path/image.e01"}'
 ```
 
-实现要点
-- `HTTPserver` 使用 `crow::App<>` 定义路由并返回 JSON
-- `TaskManager` 为任务状态的唯一来源
-- 对大结果集使用分页避免内存峰值
+### API Endpoints
+- **Create Task**: `POST /tasks`
+  ```json
+  { "image_path": "/path/to/image.e01" }
+  ```
+- **Get Status**: `GET /tasks/{id}`
+- **Get Results**: `GET /tasks/{id}/results`
 
-安全建议
-- 在生产环境前端加 nginx/TLS 并做鉴权
-- 将执行任务与 HTTP 服务分离到 worker 后台进程或队列
-
-扩展点
-- 对接消息队列（RabbitMQ/Redis）实现分布式任务执行
-- 添加认证与访问控制
+## Dependencies
+- **Crow**: C++ Microframework for Web.
+- **Boost.Asio**: For asynchronous I/O.
+- **nlohmann/json**: For JSON serialization/deserialization.

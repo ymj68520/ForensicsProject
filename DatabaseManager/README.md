@@ -1,34 +1,41 @@
-# DatabaseManager 模块
+# DatabaseManager
 
-位置: `DatabaseManager/`
+## Overview
+The DatabaseManager module is the data backbone of the project. It encapsulates SQLite operations, manages the database schemas (Raw, Events, Files), and provides utilities for data extraction, classification, and retrieval.
 
-目的
-- 封装 SQLite 操作，管理数据库文件、表结构、索引和常用插入/查询 API。
+## Features
+- **Database Management**: Handles connections, transactions, and schema initialization for SQLite databases.
+- **File Extraction**: Retrieves raw file content from disk images for analysis (`FileExtractor`).
+- **Event Extraction**: Generates a timeline of file system events (created, modified, accessed) into `_events.db` (`EventExtractor`).
+- **File Classification**: Categorizes files into 13 distinct types (Images, Documents, Executables, etc.) into `_files.db` (`FileClassifier`).
 
-主要文件
-- `DatabaseManager.h`, `DatabaseManager.cpp`
+## Components
+- **Core**:
+  - `DatabaseManager`: Main class for DB operations and `FileRecord` / `EventRecord` management.
+- **Sub-modules**:
+  - `EventExtractor`: Processes raw metadata to create timeline events.
+  - `FileClassifier`: Sorts files based on extensions and signatures.
+  - `FileExtractor`: Interface to read file data from forensic images.
 
-核心类型
-- `FileRecord` (inode, name, path, size, atime, mtime, ctime, crtime, type, md5, isDeleted, isAllocated, permissions, uid, gid)
-- `EventRecord` (timestamp, eventType, filePath, inode, description)
+## Usage
+Typcial workflow involves initializing the manager and running sub-modules:
 
-公共 API（摘录）
-- `DatabaseManager(const std::string& dbPath)`
-- `bool initialize()`
-- `bool insertFileRecord(const FileRecord& record)`
-- `bool insertEventRecord(const EventRecord& record)`
-- `bool insertPartitionInfo(int partNum, int64_t start, int64_t length, const std::string& desc, const std::string& fsType)`
-- `sqlite3* getDb() const`
+```cpp
+// Initialize Manager
+DatabaseManager dbManager(dbPath);
+if (dbManager.initialize()) {
+    // ... metadata inserted by ImageAnalyzer ...
+    
+    // Generate Timeline
+    EventExtractor eventExt(dbManager);
+    eventExt.extractEvents();
+    
+    // Classify Files
+    FileClassifier classifier(dbManager);
+    classifier.classifyFiles();
+}
+```
 
-实现要点
-- 在 `initialize()` 中创建核心表（files、partitions）并建立索引
-- 使用事务提高批量写入性能（EventExtractor 已示例）
-- 可选启用 WAL 模式以改善读写并发
-
-测试建议
-- 使用 SQLite `:memory:` 做单元测试，验证表、索引和插入行为
-- 模拟大量记录，验证插入性能并调整索引与事务策略
-
-扩展点
-- 支持 schema migration/versioning
-- 提供更丰富的查询封装接口
+## Dependencies
+- **SQLite3**: Core storage engine.
+- **ImageAnalyzer**: Populates the initial raw metadata (files table).

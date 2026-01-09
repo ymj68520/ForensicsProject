@@ -1,45 +1,45 @@
-# WindowsFilesAnalyzer Module
+# WindowsFilesAnalyzer
 
-**Location**: `WindowsFilesAnalyzer/`
+## Overview
+This module specializes in the forensic analysis of Windows system artifacts. It extracts key files from forensic images (via `FileExtractor`) and parses them to uncover user activity, system configuration, and application usage history.
 
-## Purpose
-This module specializes in the forensic analysis of Windows system artifacts. It extracts key files from forensic images (via `FileExtractor`) and parses them to uncover user activity and system configuration.
+## Features
+- **Registry Analysis**: Extracts and parses SAM, SYSTEM, SOFTWARE, and NTUSER.DAT hives for user accounts, USB history, and system services.
+- **Event Log Analysis**: Parses Windows Event Logs (`.evtx`) including Security, System, and Application logs.
+- **Artifact Analysis**: 
+  - **Prefetch & Shimcache**: Tracks application execution.
+  - **LNK & Jump Lists**: Identifies accessed files and folder history.
+  - **Recycle Bin**: Recovers deleted file metadata.
+  - **Browser History**: Analyzes web browsing activity.
 
-## Key Features
-
-### Registry Analysis
-- Extracts SAM, SYSTEM, SOFTWARE, and NTUSER.DAT hives
-- Parses user accounts and profile information
-- Extracts USB device connection history
-- Identifies system services and configuration
-
-### Event Log Analysis
-- Extracts Windows Event Logs (`.evtx`)
-- Focuses on Security, System, and Application logs
-
-### Artifact Analysis
-- **Prefetch Files**: Tracks application execution history
-- **LNK Files**: Analyzes shortcuts to identify accessed files
-- **Jump Lists**: Extracts recent and frequent file access
-- **Recycle Bin**: Recovers deleted file metadata ($I files)
-
-### Output
-All analysis results are stored in a dedicated SQLite database (`*_windows.db`) with structured tables for each artifact type.
+## Components
+- **Core**:
+  - `WindowsFilesAnalyzer`: Main class coordinating the analysis process.
+- **Parsers**:
+  - `WindowsRegistryParser`: Handles Hive file parsing.
+  - `WindowsEventLogParser`: Processes EVTX files.
+  - `WindowsArtifactsParsers`: Manages Prefetch, LNK, and other artifact parsing.
+- **Database**:
+  - `WindowsAnalysisDatabase`: Manages the SQLite storage for parsed Windows artifacts.
 
 ## Usage
-
 The module is integrated into the main `ForensicAnalyzer` application.
 
 ```cpp
-// Initialize
+// Initialize with image path and database manager
 WindowsFilesAnalyzer analyzer(imagePath, &dbManager);
+
 if (analyzer.initialize()) {
-    // Run full analysis
+    // Execute full analysis workflow
     analyzer.analyzeWindowsData();
 }
 ```
 
 ## Dependencies
-- `DatabaseManager`: For file metadata and result storage
-- `FileExtractor`: For retrieving file content from disk images
-- `SQLite3`: For database operations
+- **DatabaseManager**: For file metadata and result storage (`*_windows.db`).
+- **FileExtractor**: For retrieving file content from disk images.
+- **Third-party Libraries**: 
+  - `libhivex`: For Registry parsing.
+  - `libevtx`: For Event Log parsing.
+  - `libolecf`: For OLE Compound File (LNK/JumpList) parsing.
+  - `SQLite3`: For database operations.
