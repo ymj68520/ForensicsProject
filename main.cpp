@@ -15,6 +15,8 @@
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "HTTPServer/HTTPserver.h"
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
+#include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
+#include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 
 
 namespace fs = std::filesystem;
@@ -33,6 +35,8 @@ struct CommandLineArgs {
 	bool httpServer = false;
 	int httpPort = 8080;
 	bool androidAnalyze = false;
+	bool windowsAnalyze = false;
+	bool linuxAnalyze = false;
 };
 
 void printUsage(const char* programName) {
@@ -62,6 +66,10 @@ void printUsage(const char* programName) {
 	std::cout << "  --http-server [port]        Start HTTP server (default port 8080)\n\n";
 	std::cout << "Android Analysis options:\n";
 	std::cout << "  --android-analyze           Analyze Android application data (SMS, contacts, etc.)\n\n";
+	std::cout << "Windows Analysis options:\n";
+	std::cout << "  --windows-analyze           Analyze Windows artifacts (Registry, Event Logs, etc.)\n\n";
+	std::cout << "Linux Analysis options:\n";
+	std::cout << "  --linux-analyze             Analyze Linux artifacts (logs, user data, etc.)\n\n";
 	std::cout << "Examples:\n";
 	std::cout << "  # Analyze image (auto-detect XFS mode)\n";
 	std::cout << "  " << programName << " image.dd\n\n";
@@ -117,6 +125,10 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			}
 		} else if (arg == "--android-analyze") {
 			args.androidAnalyze = true;
+		} else if (arg == "--windows-analyze") {
+			args.windowsAnalyze = true;
+		} else if (arg == "--linux-analyze") {
+			args.linuxAnalyze = true;
 		} else if (arg[0] != '-') {
 			// Assume it's image path if no leading dash
 			args.imagePath = arg;
@@ -359,6 +371,44 @@ int main(int argc, char* argv[]) {
 
 				androidAnalyzer->analyzeAndroidData();
 				std::cout << "✓ Android data analysis completed" << std::endl;
+				std::cout << std::endl;
+			}
+
+			// Step 5: Analyze Windows data if requested
+			if (cmdArgs.windowsAnalyze) {
+				std::cout << "[5/6] Analyzing Windows artifacts..." << std::endl;
+				auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
+				auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
+
+				std::string windowsDbPath = outPrefix + baseName + "_windows.db";
+				windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
+
+				if (!windowsAnalyzer->initialize()) {
+					std::cerr << "Error: Failed to initialize Windows analyzer" << std::endl;
+					return 1;
+				}
+
+				windowsAnalyzer->analyzeWindowsData();
+				std::cout << "✓ Windows artifacts analysis completed" << std::endl;
+				std::cout << std::endl;
+			}
+
+			// Step 6: Analyze Linux data if requested
+			if (cmdArgs.linuxAnalyze) {
+				std::cout << "[6/6] Analyzing Linux artifacts..." << std::endl;
+				auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
+				auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
+
+				std::string linuxDbPath = outPrefix + baseName + "_linux.db";
+				linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
+
+				if (!linuxAnalyzer->initialize()) {
+					std::cerr << "Error: Failed to initialize Linux analyzer" << std::endl;
+					return 1;
+				}
+
+				linuxAnalyzer->analyzeLinuxData();
+				std::cout << "✓ Linux artifacts analysis completed" << std::endl;
 				std::cout << std::endl;
 			}
 
