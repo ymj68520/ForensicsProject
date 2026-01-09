@@ -2,6 +2,7 @@
 // Implementation of LinuxAnalysisDatabase
 
 #include "LinuxAnalysisDatabase.h"
+#include "../../DatabaseManager/SQL/linux_analysis_sql.h"
 #include <iostream>
 #include <sstream>
 
@@ -26,253 +27,24 @@ bool LinuxAnalysisDatabase::initialize() {
 }
 
 bool LinuxAnalysisDatabase::createTables() {
-    // Log entries table
-    const char* createLogEntries = R"(
-        CREATE TABLE IF NOT EXISTS linux_log_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            log_file TEXT,
-            timestamp TEXT,
-            unix_timestamp INTEGER,
-            hostname TEXT,
-            process TEXT,
-            pid INTEGER,
-            message TEXT,
-            level TEXT,
-            facility TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_log_timestamp ON linux_log_entries(unix_timestamp);
-        CREATE INDEX IF NOT EXISTS idx_log_file ON linux_log_entries(log_file);
-    )";
-
-    // User accounts table
-    const char* createUsers = R"(
-        CREATE TABLE IF NOT EXISTS linux_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            uid INTEGER,
-            gid INTEGER,
-            full_name TEXT,
-            home_directory TEXT,
-            shell TEXT,
-            password_hash TEXT,
-            last_password_change INTEGER,
-            password_max_age INTEGER,
-            password_min_age INTEGER,
-            password_warn_days INTEGER,
-            inactive_days INTEGER,
-            account_expires INTEGER,
-            is_locked INTEGER,
-            is_system_account INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS idx_users_uid ON linux_users(uid);
-    )";
-
-    // Groups table
-    const char* createGroups = R"(
-        CREATE TABLE IF NOT EXISTS linux_groups (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            group_name TEXT UNIQUE,
-            gid INTEGER,
-            members TEXT
-        );
-    )";
-
-    // Login records table
-    const char* createLogins = R"(
-        CREATE TABLE IF NOT EXISTS linux_login_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            terminal TEXT,
-            remote_host TEXT,
-            login_time INTEGER,
-            logout_time INTEGER,
-            login_type TEXT,
-            is_success INTEGER,
-            pid INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS idx_login_time ON linux_login_records(login_time);
-        CREATE INDEX IF NOT EXISTS idx_login_user ON linux_login_records(username);
-    )";
-
-    // Shell history table
-    const char* createShellHistory = R"(
-        CREATE TABLE IF NOT EXISTS linux_shell_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            shell_type TEXT,
-            command TEXT,
-            timestamp INTEGER,
-            line_number INTEGER,
-            history_file TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_history_user ON linux_shell_history(username);
-        CREATE INDEX IF NOT EXISTS idx_history_time ON linux_shell_history(timestamp);
-    )";
-
-    // Cron jobs table
-    const char* createCronJobs = R"(
-        CREATE TABLE IF NOT EXISTS linux_cron_jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            minute TEXT,
-            hour TEXT,
-            day_of_month TEXT,
-            month TEXT,
-            day_of_week TEXT,
-            command TEXT,
-            cron_file TEXT,
-            cron_type TEXT
-        );
-    )";
-
-    // SSH keys table
-    const char* createSSHKeys = R"(
-        CREATE TABLE IF NOT EXISTS linux_ssh_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            key_type TEXT,
-            public_key TEXT,
-            key_path TEXT,
-            comment TEXT,
-            options TEXT
-        );
-    )";
-
-    // SSH known hosts table
-    const char* createSSHKnownHosts = R"(
-        CREATE TABLE IF NOT EXISTS linux_ssh_known_hosts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            hostname TEXT,
-            key_type TEXT,
-            public_key TEXT,
-            is_hashed INTEGER
-        );
-    )";
-
-    // Packages table
-    const char* createPackages = R"(
-        CREATE TABLE IF NOT EXISTS linux_packages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            version TEXT,
-            architecture TEXT,
-            install_time INTEGER,
-            package_manager TEXT,
-            status TEXT,
-            description TEXT,
-            maintainer TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_pkg_name ON linux_packages(name);
-    )";
-
-    // Network connections table
-    const char* createNetworkConnections = R"(
-        CREATE TABLE IF NOT EXISTS linux_network_connections (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            protocol TEXT,
-            local_address TEXT,
-            local_port INTEGER,
-            remote_address TEXT,
-            remote_port INTEGER,
-            state TEXT,
-            uid INTEGER,
-            inode INTEGER,
-            process TEXT,
-            pid INTEGER
-        );
-    )";
-
-    // Systemd services table
-    const char* createSystemdServices = R"(
-        CREATE TABLE IF NOT EXISTS linux_systemd_services (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            service_name TEXT,
-            description TEXT,
-            load_state TEXT,
-            active_state TEXT,
-            sub_state TEXT,
-            unit_file TEXT,
-            exec_start TEXT,
-            user TEXT,
-            is_enabled INTEGER
-        );
-    )";
-
-    // Kernel modules table
-    const char* createKernelModules = R"(
-        CREATE TABLE IF NOT EXISTS linux_kernel_modules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            module_name TEXT,
-            size INTEGER,
-            used_count INTEGER,
-            used_by TEXT,
-            state TEXT,
-            filename TEXT
-        );
-    )";
-
-    // Firewall rules table
-    const char* createFirewallRules = R"(
-        CREATE TABLE IF NOT EXISTS linux_firewall_rules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chain TEXT,
-            table_name TEXT,
-            protocol TEXT,
-            source TEXT,
-            destination TEXT,
-            source_port INTEGER,
-            destination_port INTEGER,
-            action TEXT,
-            rule_spec TEXT
-        );
-    )";
-
-    // Audit logs table
-    const char* createAuditLogs = R"(
-        CREATE TABLE IF NOT EXISTS linux_audit_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER,
-            serial_number INTEGER,
-            type TEXT,
-            message TEXT,
-            subject TEXT,
-            object TEXT,
-            action TEXT,
-            result TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_audit_time ON linux_audit_logs(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_audit_type ON linux_audit_logs(type);
-    )";
-
-    // Browser profiles table
-    const char* createBrowserProfiles = R"(
-        CREATE TABLE IF NOT EXISTS linux_browser_profiles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            browser_type INTEGER,
-            browser_name TEXT,
-            profile_name TEXT,
-            profile_path TEXT,
-            username TEXT
-        );
-    )";
-
+    using namespace LinuxAnalysisSQL;
+    
     // Execute all create statements
-    return executeSQL(createLogEntries) &&
-           executeSQL(createUsers) &&
-           executeSQL(createGroups) &&
-           executeSQL(createLogins) &&
-           executeSQL(createShellHistory) &&
-           executeSQL(createCronJobs) &&
-           executeSQL(createSSHKeys) &&
-           executeSQL(createSSHKnownHosts) &&
-           executeSQL(createPackages) &&
-           executeSQL(createNetworkConnections) &&
-           executeSQL(createSystemdServices) &&
-           executeSQL(createKernelModules) &&
-           executeSQL(createFirewallRules) &&
-           executeSQL(createAuditLogs) &&
-           executeSQL(createBrowserProfiles);
+    return executeSQL(CREATE_LOG_ENTRIES_TABLE) &&
+           executeSQL(CREATE_USERS_TABLE) &&
+           executeSQL(CREATE_GROUPS_TABLE) &&
+           executeSQL(CREATE_LOGIN_RECORDS_TABLE) &&
+           executeSQL(CREATE_SHELL_HISTORY_TABLE) &&
+           executeSQL(CREATE_CRON_JOBS_TABLE) &&
+           executeSQL(CREATE_SSH_KEYS_TABLE) &&
+           executeSQL(CREATE_SSH_KNOWN_HOSTS_TABLE) &&
+           executeSQL(CREATE_PACKAGES_TABLE) &&
+           executeSQL(CREATE_NETWORK_CONNECTIONS_TABLE) &&
+           executeSQL(CREATE_SYSTEMD_SERVICES_TABLE) &&
+           executeSQL(CREATE_KERNEL_MODULES_TABLE) &&
+           executeSQL(CREATE_FIREWALL_RULES_TABLE) &&
+           executeSQL(CREATE_AUDIT_LOGS_TABLE) &&
+           executeSQL(CREATE_BROWSER_PROFILES_TABLE);
 }
 
 bool LinuxAnalysisDatabase::executeSQL(const std::string& sql) {
@@ -313,9 +85,7 @@ bool LinuxAnalysisDatabase::rollbackTransaction() {
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertLogEntry(const LinuxLogEntry& entry) {
-    const char* sql = "INSERT INTO linux_log_entries "
-                      "(log_file, timestamp, unix_timestamp, hostname, process, pid, message, level, facility) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_LOG_ENTRY;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -382,11 +152,7 @@ std::vector<LinuxLogEntry> LinuxAnalysisDatabase::queryLogEntries(const std::str
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertUserInfo(const LinuxUserInfo& user) {
-    const char* sql = "INSERT OR REPLACE INTO linux_users "
-                      "(username, uid, gid, full_name, home_directory, shell, password_hash, "
-                      "last_password_change, password_max_age, password_min_age, password_warn_days, "
-                      "inactive_days, account_expires, is_locked, is_system_account) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_USER_INFO;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -467,7 +233,7 @@ std::vector<LinuxUserInfo> LinuxAnalysisDatabase::queryUserAccounts(const std::s
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertGroupInfo(const LinuxGroupInfo& group) {
-    const char* sql = "INSERT OR REPLACE INTO linux_groups (group_name, gid, members) VALUES (?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_GROUP_INFO;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -524,9 +290,7 @@ std::vector<LinuxGroupInfo> LinuxAnalysisDatabase::queryGroups(const std::string
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertLoginRecord(const LinuxLoginRecord& record) {
-    const char* sql = "INSERT INTO linux_login_records "
-                      "(username, terminal, remote_host, login_time, logout_time, login_type, is_success, pid) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_LOGIN_RECORD;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -591,9 +355,7 @@ std::vector<LinuxLoginRecord> LinuxAnalysisDatabase::queryLoginRecords(const std
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertShellHistory(const ShellHistoryEntry& entry) {
-    const char* sql = "INSERT INTO linux_shell_history "
-                      "(username, shell_type, command, timestamp, line_number, history_file) "
-                      "VALUES (?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_SHELL_HISTORY;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -654,9 +416,7 @@ std::vector<ShellHistoryEntry> LinuxAnalysisDatabase::queryShellHistory(const st
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertCronJob(const CronJobEntry& job) {
-    const char* sql = "INSERT INTO linux_cron_jobs "
-                      "(username, minute, hour, day_of_month, month, day_of_week, command, cron_file, cron_type) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_CRON_JOB;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -723,9 +483,7 @@ std::vector<CronJobEntry> LinuxAnalysisDatabase::queryCronJobs(const std::string
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertSSHKey(const SSHKeyInfo& key) {
-    const char* sql = "INSERT INTO linux_ssh_keys "
-                      "(username, key_type, public_key, key_path, comment, options) "
-                      "VALUES (?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_SSH_KEY;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -786,9 +544,7 @@ std::vector<SSHKeyInfo> LinuxAnalysisDatabase::querySSHKeys(const std::string& w
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertSSHKnownHost(const SSHKnownHost& host) {
-    const char* sql = "INSERT INTO linux_ssh_known_hosts "
-                      "(username, hostname, key_type, public_key, is_hashed) "
-                      "VALUES (?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_SSH_KNOWN_HOST;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -836,9 +592,7 @@ std::vector<SSHKnownHost> LinuxAnalysisDatabase::querySSHKnownHosts(const std::s
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertPackageInfo(const PackageInfo& pkg) {
-    const char* sql = "INSERT INTO linux_packages "
-                      "(name, version, architecture, install_time, package_manager, status, description, maintainer) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_PACKAGE_INFO;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -903,9 +657,7 @@ std::vector<PackageInfo> LinuxAnalysisDatabase::queryPackages(const std::string&
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertNetworkConnection(const NetworkConnection& conn) {
-    const char* sql = "INSERT INTO linux_network_connections "
-                      "(protocol, local_address, local_port, remote_address, remote_port, state, uid, inode, process, pid) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_NETWORK_CONNECTION;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -963,9 +715,7 @@ std::vector<NetworkConnection> LinuxAnalysisDatabase::queryNetworkConnections(co
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertSystemdService(const SystemdServiceInfo& service) {
-    const char* sql = "INSERT INTO linux_systemd_services "
-                      "(service_name, description, load_state, active_state, sub_state, unit_file, exec_start, user, is_enabled) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_SYSTEMD_SERVICE;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -1021,9 +771,7 @@ std::vector<SystemdServiceInfo> LinuxAnalysisDatabase::querySystemdServices(cons
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertKernelModule(const KernelModuleInfo& module) {
-    const char* sql = "INSERT INTO linux_kernel_modules "
-                      "(module_name, size, used_count, used_by, state, filename) "
-                      "VALUES (?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_KERNEL_MODULE;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -1085,9 +833,7 @@ std::vector<KernelModuleInfo> LinuxAnalysisDatabase::queryKernelModules(const st
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertFirewallRule(const FirewallRule& rule) {
-    const char* sql = "INSERT INTO linux_firewall_rules "
-                      "(chain, table_name, protocol, source, destination, source_port, destination_port, action, rule_spec) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_FIREWALL_RULE;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -1143,9 +889,7 @@ std::vector<FirewallRule> LinuxAnalysisDatabase::queryFirewallRules(const std::s
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertAuditLog(const LinuxAuditLogEntry& entry) {
-    const char* sql = "INSERT INTO linux_audit_logs "
-                      "(timestamp, serial_number, type, message, subject, object, action, result) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_AUDIT_LOG;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;
@@ -1210,9 +954,7 @@ std::vector<LinuxAuditLogEntry> LinuxAnalysisDatabase::queryAuditLogs(const std:
 // ============================================================================
 
 bool LinuxAnalysisDatabase::insertBrowserProfile(const LinuxBrowserProfile& profile) {
-    const char* sql = "INSERT INTO linux_browser_profiles "
-                      "(browser_type, browser_name, profile_name, profile_path, username) "
-                      "VALUES (?, ?, ?, ?, ?)";
+    const char* sql = LinuxAnalysisSQL::INSERT_BROWSER_PROFILE;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return false;

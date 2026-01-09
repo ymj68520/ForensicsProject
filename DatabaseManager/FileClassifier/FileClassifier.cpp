@@ -1,6 +1,10 @@
 #include "FileClassifier.h"
-#include "../../AuditLog/AuditLog.h"
+#include "../SQL/file_classifier_sql.h"
+#include "../AuditLog/AuditLog.h"
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <sqlite3.h>
 #include <algorithm>
 #include <cctype>
 
@@ -56,254 +60,101 @@ bool FileClassifier::openDatabases() {
 }
 
 bool FileClassifier::createCategoryTables() {
-	// Create main files table first
-	std::string createFilesTable = R"(
-        CREATE TABLE IF NOT EXISTS files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            inode INTEGER,
-            name TEXT,
-            path TEXT,
-            size INTEGER,
-            extension TEXT,
-            category TEXT,
-            type TEXT,
-            mtime INTEGER,
-            ctime INTEGER,
-            is_deleted INTEGER,
-            md5 TEXT
-        );
-    )";
+    using namespace FileClassifierSQL;
+    
+    //  CREATE main files table
+    char* errMsg = nullptr;
+    int rc = sqlite3_exec(fileDb_, CREATE_MAIN_FILES_TABLE, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to create files table: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
 
-	char* errMsg = nullptr;
-	int rc = sqlite3_exec(fileDb_, createFilesTable.c_str(), nullptr, nullptr, &errMsg);
-	if (rc != SQLITE_OK) {
-		std::cerr << "Failed to create files table: " << errMsg << std::endl;
-		sqlite3_free(errMsg);
-		return false;
-	}
+    // Create indices for files table
+    sqlite3_exec(fileDb_, CREATE_MAIN_FILES_INDICES, nullptr, nullptr, nullptr);
 
-	// Create indices for files table
-	sqlite3_exec(fileDb_, "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);", nullptr, nullptr, nullptr);
-	sqlite3_exec(fileDb_, "CREATE INDEX IF NOT EXISTS idx_files_category ON files(category);", nullptr, nullptr, nullptr);
+    // Create table for each category
+    std::vector<FileCategory> categories = {
+        FileCategory::IMAGE,
+        FileCategory::VIDEO,
+        FileCategory::AUDIO,
+        FileCategory::DOCUMENT,
+        FileCategory::ARCHIVE,
+        FileCategory::EXECUTABLE,
+        FileCategory::DATABASE,
+        FileCategory::SOURCE_CODE,
+        FileCategory::WEB,
+        FileCategory::EMAIL,
+        FileCategory::SYSTEM,
+        FileCategory::ENCRYPTED,
+        FileCategory::OS_CONFIG,
+        FileCategory::OS_BOOT,
+        FileCategory::OS_LIBRARY,
+        FileCategory::FS_JOURNAL,
+        FileCategory::FS_METADATA,
+        FileCategory::LOG_FILE,
+        FileCategory::CACHE,
+        FileCategory::TEMP,
+        FileCategory::BACKUP,
+        FileCategory::FONT,
+        FileCategory::CERTIFICATE,
+        FileCategory::UNKNOWN
+    };
 
-	// Create table for each category
-	std::vector<FileCategory> categories = {
-		FileCategory::IMAGE,
-		FileCategory::VIDEO,
-		FileCategory::AUDIO,
-		FileCategory::DOCUMENT,
-		FileCategory::ARCHIVE,
-		FileCategory::EXECUTABLE,
-		FileCategory::DATABASE,
-		FileCategory::SOURCE_CODE,
-		FileCategory::WEB,
-		FileCategory::EMAIL,
-		FileCategory::SYSTEM,
-		FileCategory::ENCRYPTED,
-		FileCategory::OS_CONFIG,
-		FileCategory::OS_BOOT,
-		FileCategory::OS_LIBRARY,
-		FileCategory::FS_JOURNAL,
-		FileCategory::FS_METADATA,
-		FileCategory::LOG_FILE,
-		FileCategory::CACHE,
-		FileCategory::TEMP,
-		FileCategory::BACKUP,
-		FileCategory::FONT,
-		FileCategory::CERTIFICATE,
-		FileCategory::UNKNOWN
-	};
+    for (const auto& category : categories) {
+        std::string tableName = getCategoryTableName(category);
 
-	for (const auto& category : categories) {
-		std::string tableName = getCategoryTableName(category);
+        // Create table using template
+        std::string createTableSql = std::string(CREATE_CATEGORY_TABLE_TEMPLATE);
+        // Replace %TABLE_NAME% with actual table name
+        size_t pos = 0;
+        while ((pos = createTableSql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+            createTableSql.replace(pos, 12, tableName);
+            pos += tableName.length();
+        }
 
-		std::string createTableSql = "CREATE TABLE IF NOT EXISTS " + tableName + R"( (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            inode INTEGER,
-            name TEXT,
-            path TEXT,
-            size INTEGER,
-            extension TEXT,
-            mtime INTEGER,
-            ctime INTEGER,
-            is_deleted INTEGER,
-            md5 TEXT
-        );)";
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(fileDb_, createTableSql.c_str(), nullptr, nullptr, &errMsg);
 
-		char* errMsg = nullptr;
-		int rc = sqlite3_exec(fileDb_, createTableSql.c_str(), nullptr, nullptr, &errMsg);
+        if (rc != SQLITE_OK) {
+            std::cerr << "Failed to create table " << tableName << ": " << errMsg << std::endl;
+            sqlite3_free(errMsg);
+            return false;
+        }
 
-		if (rc != SQLITE_OK) {
-			std::cerr << "Failed to create table " << tableName << ": " << errMsg << std::endl;
-			sqlite3_free(errMsg);
-			return false;
-		}
+        // Create indices using templates
+        std::string indexSql = std::string(CREATE_CATEGORY_INDEX_PATH_TEMPLATE);
+        pos = 0;
+        while ((pos = indexSql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+            indexSql.replace(pos, 12, tableName);
+            pos += tableName.length();
+        }
+        sqlite3_exec(fileDb_, indexSql.c_str(), nullptr, nullptr, nullptr);
 
-		// Create indices
-		std::string indexSql = "CREATE INDEX IF NOT EXISTS idx_" + tableName +
-			"_path ON " + tableName + "(path);";
-		sqlite3_exec(fileDb_, indexSql.c_str(), nullptr, nullptr, nullptr);
+        indexSql = std::string(CREATE_CATEGORY_INDEX_EXTENSION_TEMPLATE);
+        pos = 0;
+        while ((pos = indexSql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+            indexSql.replace(pos, 12, tableName);
+            pos += tableName.length();
+        }
+        sqlite3_exec(fileDb_, indexSql.c_str(), nullptr, nullptr, nullptr);
 
-		indexSql = "CREATE INDEX IF NOT EXISTS idx_" + tableName +
-			"_extension ON " + tableName + "(extension);";
-		sqlite3_exec(fileDb_, indexSql.c_str(), nullptr, nullptr, nullptr);
+        indexSql = std::string(CREATE_CATEGORY_INDEX_SIZE_TEMPLATE);
+        pos = 0;
+        while ((pos = indexSql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+            indexSql.replace(pos, 12, tableName);
+            pos += tableName.length();
+        }
+        sqlite3_exec(fileDb_, indexSql.c_str(), nullptr, nullptr, nullptr);
+    }
 
-		indexSql = "CREATE INDEX IF NOT EXISTS idx_" + tableName +
-			"_size ON " + tableName + "(size);";
-		sqlite3_exec(fileDb_, indexSql.c_str(), nullptr, nullptr, nullptr);
-	}
+    // Create views
+    sqlite3_exec(fileDb_, CREATE_FILE_SUMMARY_VIEW, nullptr, nullptr, nullptr);
+    sqlite3_exec(fileDb_, CREATE_EXTENSION_STATISTICS_VIEW, nullptr, nullptr, nullptr);
+    sqlite3_exec(fileDb_, CREATE_DELETED_FILES_VIEW, nullptr, nullptr, nullptr);
 
-	// Create summary view
-	std::string createSummaryView = R"(
-        CREATE VIEW IF NOT EXISTS file_summary AS
-        SELECT
-            'Images' as category,
-            COUNT(*) as file_count,
-            SUM(size) as total_size,
-            ROUND(AVG(size), 2) as avg_size,
-            MAX(size) as max_size
-        FROM images
-        UNION ALL
-        SELECT 'Videos', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM videos
-        UNION ALL
-        SELECT 'Audio', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM audio_files
-        UNION ALL
-        SELECT 'Documents', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM documents
-        UNION ALL
-        SELECT 'Archives', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM archives
-        UNION ALL
-        SELECT 'Executables', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM executables
-        UNION ALL
-        SELECT 'Databases', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM databases
-        UNION ALL
-        SELECT 'Source Code', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM source_code
-        UNION ALL
-        SELECT 'Web Files', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM web_files
-        UNION ALL
-        SELECT 'Email', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM email_files
-        UNION ALL
-        SELECT 'System Files', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM system_files
-        UNION ALL
-        SELECT 'Encrypted', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM encrypted_files
-        UNION ALL
-        SELECT 'OS Config', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM os_config_files
-        UNION ALL
-        SELECT 'OS Boot', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM os_boot_files
-        UNION ALL
-        SELECT 'OS Libraries', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM os_libraries
-        UNION ALL
-        SELECT 'FS Journal', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM fs_journal
-        UNION ALL
-        SELECT 'FS Metadata', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM fs_metadata
-        UNION ALL
-        SELECT 'Logs', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM log_files
-        UNION ALL
-        SELECT 'Cache', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM cache_files
-        UNION ALL
-        SELECT 'Temp', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM temp_files
-        UNION ALL
-        SELECT 'Backup', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM backup_files
-        UNION ALL
-        SELECT 'Fonts', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM font_files
-        UNION ALL
-        SELECT 'Certificates', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM certificates
-        UNION ALL
-        SELECT 'Unknown', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM unknown_files;
-    )";
-
-	sqlite3_exec(fileDb_, createSummaryView.c_str(), nullptr, nullptr, nullptr);
-
-	// Create extension statistics view
-	std::string createExtensionView = R"(
-        CREATE VIEW IF NOT EXISTS extension_statistics AS
-        SELECT extension, COUNT(*) as count, SUM(size) as total_size
-        FROM (
-            SELECT extension, size FROM images
-            UNION ALL SELECT extension, size FROM videos
-            UNION ALL SELECT extension, size FROM audio_files
-            UNION ALL SELECT extension, size FROM documents
-            UNION ALL SELECT extension, size FROM archives
-            UNION ALL SELECT extension, size FROM executables
-            UNION ALL SELECT extension, size FROM databases
-            UNION ALL SELECT extension, size FROM source_code
-            UNION ALL SELECT extension, size FROM web_files
-            UNION ALL SELECT extension, size FROM email_files
-            UNION ALL SELECT extension, size FROM system_files
-            UNION ALL SELECT extension, size FROM encrypted_files
-            UNION ALL SELECT extension, size FROM os_config_files
-            UNION ALL SELECT extension, size FROM os_boot_files
-            UNION ALL SELECT extension, size FROM os_libraries
-            UNION ALL SELECT extension, size FROM fs_journal
-            UNION ALL SELECT extension, size FROM fs_metadata
-            UNION ALL SELECT extension, size FROM log_files
-            UNION ALL SELECT extension, size FROM cache_files
-            UNION ALL SELECT extension, size FROM temp_files
-            UNION ALL SELECT extension, size FROM backup_files
-            UNION ALL SELECT extension, size FROM font_files
-            UNION ALL SELECT extension, size FROM certificates
-            UNION ALL SELECT extension, size FROM unknown_files
-        )
-        GROUP BY extension
-		ORDER BY count DESC;
-    )";
-
-	sqlite3_exec(fileDb_, createExtensionView.c_str(), nullptr, nullptr, nullptr);
-
-	// Create deleted files view
-	std::string createDeletedView = R"(
-        CREATE VIEW IF NOT EXISTS deleted_files AS
-        SELECT 'Images' as category, name, path, size, extension FROM images WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Videos', name, path, size, extension FROM videos WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Audio', name, path, size, extension FROM audio_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Documents', name, path, size, extension FROM documents WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Archives', name, path, size, extension FROM archives WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Executables', name, path, size, extension FROM executables WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Databases', name, path, size, extension FROM databases WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Source Code', name, path, size, extension FROM source_code WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Web Files', name, path, size, extension FROM web_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Email', name, path, size, extension FROM email_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'System Files', name, path, size, extension FROM system_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Encrypted', name, path, size, extension FROM encrypted_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'OS Config', name, path, size, extension FROM os_config_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'OS Boot', name, path, size, extension FROM os_boot_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'OS Libraries', name, path, size, extension FROM os_libraries WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'FS Journal', name, path, size, extension FROM fs_journal WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'FS Metadata', name, path, size, extension FROM fs_metadata WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Logs', name, path, size, extension FROM log_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Cache', name, path, size, extension FROM cache_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Temp', name, path, size, extension FROM temp_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Backup', name, path, size, extension FROM backup_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Fonts', name, path, size, extension FROM font_files WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Certificates', name, path, size, extension FROM certificates WHERE is_deleted = 1
-        UNION ALL
-        SELECT 'Unknown', name, path, size, extension FROM unknown_files WHERE is_deleted = 1;
-    )";
-
-	sqlite3_exec(fileDb_, createDeletedView.c_str(), nullptr, nullptr, nullptr);
-
-	return true;
+    return true;
 }
 
 bool FileClassifier::classifyFiles() {

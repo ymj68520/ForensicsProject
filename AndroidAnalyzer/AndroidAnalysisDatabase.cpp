@@ -1,4 +1,5 @@
 #include "AndroidAnalysisDatabase.h"
+#include "../DatabaseManager/SQL/android_analysis_sql.h"
 #include <iostream>
 #include <sqlite3.h>
 #include "fileSystem.h"
@@ -25,122 +26,7 @@ bool AndroidAnalysisDatabase::initialize() {
 }
 
 bool AndroidAnalysisDatabase::createTables() {
-    const char* schema = R"(
-        CREATE TABLE IF NOT EXISTS system_build_properties (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            property_key TEXT NOT NULL UNIQUE,
-            property_value TEXT
-        );
-        CREATE TABLE IF NOT EXISTS system_apps (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            package_name TEXT NOT NULL,
-            apk_path TEXT NOT NULL,
-            version_name TEXT,
-            version_code TEXT,
-            is_system_app INTEGER DEFAULT 1,
-            is_privileged INTEGER DEFAULT 0,
-            UNIQUE(package_name, apk_path)
-        );
-        CREATE TABLE IF NOT EXISTS framework_files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT NOT NULL,
-            file_path TEXT NOT NULL UNIQUE,
-            file_type TEXT,
-            file_size INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS sms_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            thread_id INTEGER,
-            address TEXT,
-            person TEXT,
-            date INTEGER,
-            date_sent INTEGER,
-            read INTEGER,
-            status INTEGER,
-            type INTEGER,
-            body TEXT,
-            service_center TEXT
-        );
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            raw_contact_id INTEGER,
-            display_name TEXT,
-            phone_number TEXT,
-            email TEXT,
-            account_type TEXT,
-            account_name TEXT
-        );
-        CREATE TABLE IF NOT EXISTS call_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            number TEXT,
-            date INTEGER,
-            duration INTEGER,
-            type INTEGER,
-            name TEXT,
-            geocoded_location TEXT
-        );
-        CREATE TABLE IF NOT EXISTS whatsapp_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender TEXT,
-            receiver TEXT,
-            content TEXT,
-            timestamp INTEGER,
-            media_url TEXT,
-            media_type TEXT
-        );
-        CREATE TABLE IF NOT EXISTS telegram_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender TEXT,
-            receiver TEXT,
-            content TEXT,
-            timestamp INTEGER,
-            media_url TEXT,
-            media_type TEXT
-        );
-        CREATE TABLE IF NOT EXISTS wechat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender TEXT,
-            receiver TEXT,
-            content TEXT,
-            timestamp INTEGER,
-            media_url TEXT,
-            media_type TEXT
-        );
-        CREATE TABLE IF NOT EXISTS wifi_networks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ssid TEXT NOT NULL,
-            pre_shared_key TEXT,
-            key_mgmt TEXT,
-            last_connected INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS chrome_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            title TEXT,
-            visit_count INTEGER,
-            last_visit_time INTEGER,
-            typed_count INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS installed_packages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            package_name TEXT NOT NULL UNIQUE,
-            code_path TEXT,
-            native_library_path TEXT,
-            first_install_time INTEGER,
-            last_update_time INTEGER,
-            version TEXT,
-            installer TEXT
-        );
-        CREATE TABLE IF NOT EXISTS usage_stats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            package_name TEXT,
-            total_time_foreground INTEGER,
-            last_time_used INTEGER,
-            interval_start INTEGER
-        );
-    )";
-
-    return executeSQL(schema);
+    return executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES);
 }
 
 bool AndroidAnalysisDatabase::insertBuildProperty(const SystemBuildProperty& prop) {

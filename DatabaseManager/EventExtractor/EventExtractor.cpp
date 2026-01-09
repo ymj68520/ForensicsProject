@@ -1,7 +1,9 @@
 #include "EventExtractor.h"
-#include "../../AuditLog/AuditLog.h"
+#include "../SQL/event_extractor_sql.h"
+#include "../AuditLog/AuditLog.h"
 #include <iostream>
-#include <vector>
+#include <sstream>
+#include <sqlite3.h>
 #include <algorithm>
 
 EventExtractor::EventExtractor(const std::string& sourceDbPath,
@@ -52,150 +54,34 @@ bool EventExtractor::openDatabases() {
 }
 
 bool EventExtractor::createEventTables() {
-	// Main events table
-	std::string createEventsTable = R"(
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            event_type TEXT NOT NULL,
-            file_path TEXT NOT NULL,
-            inode INTEGER,
-            description TEXT,
-            file_size INTEGER,
-            file_type TEXT
-        );
-    )";
+    using namespace EventExtractorSQL;
+    
+    char* errMsg = nullptr;
+    
+    // Create main events table
+    int rc = sqlite3_exec(eventDb_, CREATE_EVENTS_TABLE, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to create events table: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
 
-	char* errMsg = nullptr;
-	int rc = sqlite3_exec(eventDb_, createEventsTable.c_str(), nullptr, nullptr, &errMsg);
+    // Create category tables
+    sqlite3_exec(eventDb_, CREATE_CREATION_EVENTS_TABLE, nullptr, nullptr, nullptr);
+    sqlite3_exec(eventDb_, CREATE_MODIFICATION_EVENTS_TABLE, nullptr, nullptr, nullptr);
+    sqlite3_exec(eventDb_, CREATE_ACCESS_EVENTS_TABLE, nullptr, nullptr, nullptr);
+    sqlite3_exec(eventDb_, CREATE_CHANGE_EVENTS_TABLE, nullptr, nullptr, nullptr);
+    sqlite3_exec(eventDb_, CREATE_DELETION_EVENTS_TABLE, nullptr, nullptr, nullptr);
 
-	if (rc != SQLITE_OK) {
-		std::cerr << "Failed to create events table: " << errMsg << std::endl;
-		sqlite3_free(errMsg);
-		return false;
-	}
+    // Create indices
+    sqlite3_exec(eventDb_, CREATE_EVENT_INDICES, nullptr, nullptr, nullptr);
 
-	// Create summary tables for different event types
-	std::string createCreationEventsTable = R"(
-        CREATE TABLE IF NOT EXISTS creation_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            file_path TEXT NOT NULL,
-            inode INTEGER,
-            file_size INTEGER,
-            file_type TEXT
-        );
-    )";
+    // Create views
+    sqlite3_exec(eventDb_, CREATE_TIMELINE_VIEW, nullptr, nullptr, nullptr);
+    sqlite3_exec(eventDb_, CREATE_STATISTICS_VIEW, nullptr, nullptr, nullptr);
+    sqlite3_exec(eventDb_, CREATE_HOURLY_ACTIVITY_VIEW, nullptr, nullptr, nullptr);
 
-	std::string createModificationEventsTable = R"(
-        CREATE TABLE IF NOT EXISTS modification_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            file_path TEXT NOT NULL,
-            inode INTEGER,
-            file_size INTEGER,
-            file_type TEXT
-        );
-    )";
-
-	std::string createAccessEventsTable = R"(
-        CREATE TABLE IF NOT EXISTS access_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            file_path TEXT NOT NULL,
-            inode INTEGER,
-            file_size INTEGER,
-            file_type TEXT
-        );
-    )";
-
-	std::string createChangeEventsTable = R"(
-        CREATE TABLE IF NOT EXISTS change_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            file_path TEXT NOT NULL,
-            inode INTEGER,
-            file_size INTEGER,
-            file_type TEXT,
-            description TEXT
-        );
-    )";
-
-	std::string createDeletionEventsTable = R"(
-        CREATE TABLE IF NOT EXISTS deletion_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            file_path TEXT NOT NULL,
-            inode INTEGER,
-            file_size INTEGER,
-            file_type TEXT
-        );
-    )";
-
-	sqlite3_exec(eventDb_, createCreationEventsTable.c_str(), nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, createModificationEventsTable.c_str(), nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, createAccessEventsTable.c_str(), nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, createChangeEventsTable.c_str(), nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, createDeletionEventsTable.c_str(), nullptr, nullptr, nullptr);
-
-	// Create indices for performance
-	sqlite3_exec(eventDb_, "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);",
-		nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);",
-		nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, "CREATE INDEX IF NOT EXISTS idx_events_path ON events(file_path);",
-		nullptr, nullptr, nullptr);
-	sqlite3_exec(eventDb_, "CREATE INDEX IF NOT EXISTS idx_events_inode ON events(inode);",
-		nullptr, nullptr, nullptr);
-
-	// Create timeline view
-	std::string createTimelineView = R"(
-        CREATE VIEW IF NOT EXISTS timeline AS
-        SELECT
-            datetime(timestamp, 'unixepoch') as event_time,
-            event_type,
-            file_path,
-            inode,
-            file_size,
-            file_type,
-            description
-        FROM events
-        ORDER BY timestamp DESC;
-    )";
-
-	sqlite3_exec(eventDb_, createTimelineView.c_str(), nullptr, nullptr, nullptr);
-
-	// Create statistics view
-	std::string createStatsView = R"(
-        CREATE VIEW IF NOT EXISTS event_statistics AS
-        SELECT
-            event_type,
-            COUNT(*) as event_count,
-            MIN(timestamp) as first_event,
-            MAX(timestamp) as last_event,
-            datetime(MIN(timestamp), 'unixepoch') as first_event_time,
-            datetime(MAX(timestamp), 'unixepoch') as last_event_time
-        FROM events
-        GROUP BY event_type;
-    )";
-
-	sqlite3_exec(eventDb_, createStatsView.c_str(), nullptr, nullptr, nullptr);
-
-	// Create hourly activity view
-	std::string createHourlyView = R"(
-        CREATE VIEW IF NOT EXISTS hourly_activity AS
-        SELECT
-            strftime('%Y-%m-%d %H:00:00', datetime(timestamp, 'unixepoch')) as hour,
-            event_type,
-            COUNT(*) as event_count
-        FROM events
-        GROUP BY hour, event_type
-        ORDER BY hour DESC;
-    )";
-
-	sqlite3_exec(eventDb_, createHourlyView.c_str(), nullptr, nullptr, nullptr);
-
-	return true;
+    return true;
 }
 
 bool EventExtractor::extractFileSystemEvents() {
