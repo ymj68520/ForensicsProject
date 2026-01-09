@@ -17,6 +17,8 @@
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
+#include "FullTextSearch/FullTextSearch.h"
+#include "FullTextSearch/TextExtractor.h"
 
 
 namespace fs = std::filesystem;
@@ -37,6 +39,10 @@ struct CommandLineArgs {
 	bool androidAnalyze = false;
 	bool windowsAnalyze = false;
 	bool linuxAnalyze = false;
+	// Full Text Search options
+	std::string indexDir;
+	bool searchMode = false;
+	std::string searchQuery;
 };
 
 void printUsage(const char* programName) {
@@ -70,6 +76,10 @@ void printUsage(const char* programName) {
 	std::cout << "  --windows-analyze           Analyze Windows artifacts (Registry, Event Logs, etc.)\n\n";
 	std::cout << "Linux Analysis options:\n";
 	std::cout << "  --linux-analyze             Analyze Linux artifacts (logs, user data, etc.)\n\n";
+	std::cout << "  --linux-analyze             Analyze Linux artifacts (logs, user data, etc.)\n\n";
+	std::cout << "Full-Text Search options:\n";
+	std::cout << "  --index <dir>               Index all text files in directory\n";
+	std::cout << "  --search <query>            Search indexed database (requires --index or uses default)\n\n";
 	std::cout << "Examples:\n";
 	std::cout << "  # Analyze image (auto-detect XFS mode)\n";
 	std::cout << "  " << programName << " image.dd\n\n";
@@ -129,6 +139,13 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			args.windowsAnalyze = true;
 		} else if (arg == "--linux-analyze") {
 			args.linuxAnalyze = true;
+		} else if (arg == "--index" && i + 1 < argc) {
+			args.indexDir = argv[++i];
+		} else if (arg == "--search" && i + 1 < argc) {
+			args.searchMode = true;
+			// Join remaining args as query if multiple words provided without quotes?
+			// For simplicity, assume quoted query for now.
+			args.searchQuery = argv[++i];
 		} else if (arg[0] != '-') {
 			// Assume it's image path if no leading dash
 			args.imagePath = arg;
@@ -186,6 +203,70 @@ int main(int argc, char* argv[]) {
 		asio::io_context ioc;
 		forensics::HTTPServer server(ioc);
 		server.run(cmdArgs.httpPort);
+		return 0;
+	}
+
+	// ========== FULL-TEXT SEARCH MODE ==========
+	if (!cmdArgs.indexDir.empty() || cmdArgs.searchMode) {
+		std::string indexDbPath = "search_index_xapian";
+		if (!cmdArgs.dbOutputDir.empty()) {
+			fs::create_directories(cmdArgs.dbOutputDir);
+			indexDbPath = cmdArgs.dbOutputDir + "/" + indexDbPath;
+		}
+
+		if (!cmdArgs.indexDir.empty()) {
+			std::cout << "=== Indexing Directory ===" << std::endl;
+			std::cout << "Source: " << cmdArgs.indexDir << std::endl;
+			std::cout << "Index DB: " << indexDbPath << std::endl;
+			
+			if (!fs::exists(cmdArgs.indexDir)) {
+				std::cerr << "Error: Directory not found: " << cmdArgs.indexDir << std::endl;
+				return 1;
+			}
+
+			try {
+				forensics::XapianIndexer indexer(indexDbPath);
+				
+				int count = 0;
+				for (const auto& entry : fs::recursive_directory_iterator(cmdArgs.indexDir)) {
+					if (entry.is_regular_file()) {
+						std::string path = entry.path().string();
+						std::string content = forensics::TextExtractor::extract(path);
+						
+						if (!content.empty()) {
+							indexer.addDocument(path, content);
+							count++;
+							if (count % 100 == 0) std::cout << "Indexed " << count << " files..." << std::endl;
+						}
+					}
+				}
+				indexer.commit();
+				std::cout << "Indexing complete. Total files: " << count << std::endl;
+			} catch (const std::exception& e) {
+				std::cerr << "Indexing Error: " << e.what() << std::endl;
+				return 1;
+			}
+		}
+
+		if (cmdArgs.searchMode) {
+			std::cout << "\n=== Searching ===" << std::endl;
+			std::cout << "Query: " << cmdArgs.searchQuery << std::endl;
+			std::cout << "Index DB: " << indexDbPath << std::endl;
+
+			try {
+				forensics::XapianSearcher searcher(indexDbPath);
+				auto results = searcher.search(cmdArgs.searchQuery);
+				
+				std::cout << "Found " << results.size() << " results (showing top 10):" << std::endl;
+				for (const auto& res : results) {
+					std::cout << "[" << static_cast<int>(res.score) << "%] " << res.path << std::endl;
+				}
+			} catch (const std::exception& e) {
+				std::cerr << "Search Error: " << e.what() << std::endl;
+				return 1;
+			}
+		}
+
 		return 0;
 	}
 

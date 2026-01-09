@@ -18,6 +18,7 @@ pkg_check_modules(LIBEVTX REQUIRED libevtx)
 pkg_check_modules(LIBBFIO REQUIRED libbfio)
 pkg_check_modules(LIBESEDB REQUIRED libesedb)
 pkg_check_modules(LIBOLECF REQUIRED libolecf)
+pkg_check_modules(XAPIAN REQUIRED xapian-core)
 
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
@@ -77,6 +78,9 @@ include_directories(
   ${LIBBFIO_INCLUDE_DIRS}
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
+  ${XAPIAN_INCLUDE_DIRS}
+  # FullTextSearch includes
+  ${CMAKE_SOURCE_DIR}/FullTextSearch
   # WindowsFilesAnalyzer includes
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Common
@@ -129,7 +133,10 @@ set(LIB_SOURCES
     LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
     LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
     LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
-    AuditLog/AuditLog.cpp)
+    LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
+    AuditLog/AuditLog.cpp
+    FullTextSearch/FullTextSearch.cpp
+    FullTextSearch/TextExtractor.cpp)
 
 # Create executable Create executable
 add_executable(forensic_analyzer main.cpp ${LIB_SOURCES})
@@ -149,7 +156,9 @@ else()
     ${LIBEVTX_LIBRARIES}
     ${LIBBFIO_LIBRARIES}
     ${LIBESEDB_LIBRARIES}
+    ${LIBESEDB_LIBRARIES}
     ${LIBOLECF_LIBRARIES}
+    ${XAPIAN_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 
