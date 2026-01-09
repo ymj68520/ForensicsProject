@@ -19,6 +19,7 @@
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
+#include "FileCarving/FileCarver.h"
 
 
 namespace fs = std::filesystem;
@@ -43,6 +44,10 @@ struct CommandLineArgs {
 	std::string indexDir;
 	bool searchMode = false;
 	std::string searchQuery;
+	
+	// File Carving options
+	bool carveMode = false;
+	std::string carveOutputDir = "carved_files";
 };
 
 void printUsage(const char* programName) {
@@ -80,6 +85,9 @@ void printUsage(const char* programName) {
 	std::cout << "Full-Text Search options:\n";
 	std::cout << "  --index <dir>               Index all text files in directory\n";
 	std::cout << "  --search <query>            Search indexed database (requires --index or uses default)\n\n";
+	std::cout << "File Carving options:\n";
+	std::cout << "  --carve                     Scan and recover deleted files from unallocated space\n";
+	std::cout << "  --carve-out <dir>           Output directory for carved files (default: carved_files)\n\n";
 	std::cout << "Examples:\n";
 	std::cout << "  # Analyze image (auto-detect XFS mode)\n";
 	std::cout << "  " << programName << " image.dd\n\n";
@@ -146,6 +154,10 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			// Join remaining args as query if multiple words provided without quotes?
 			// For simplicity, assume quoted query for now.
 			args.searchQuery = argv[++i];
+		} else if (arg == "--carve") {
+			args.carveMode = true;
+		} else if (arg == "--carve-out" && i + 1 < argc) {
+			args.carveOutputDir = argv[++i];
 		} else if (arg[0] != '-') {
 			// Assume it's image path if no leading dash
 			args.imagePath = arg;
@@ -267,6 +279,23 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
+		return 0;
+	}
+
+	// ========== FILE CARVING MODE ==========
+	if (cmdArgs.carveMode) {
+		std::cout << "=== File Carving Mode ===" << std::endl;
+		if (cmdArgs.imagePath.empty()) {
+			std::cerr << "Error: Image path is required for carving." << std::endl;
+			return 1;
+		}
+
+		FileCarver carver;
+		// Default offset 0, ideally we should allow --offset
+		// Assuming partition offset might be detected or passed via future args.
+		
+		int recovered = carver.carve(cmdArgs.imagePath, cmdArgs.carveOutputDir);
+		std::cout << "Carving finished. recovered " << recovered << " files to " << cmdArgs.carveOutputDir << std::endl;
 		return 0;
 	}
 

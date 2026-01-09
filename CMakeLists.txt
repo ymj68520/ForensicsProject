@@ -79,8 +79,9 @@ include_directories(
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
   ${XAPIAN_INCLUDE_DIRS}
-  # FullTextSearch includes
   ${CMAKE_SOURCE_DIR}/FullTextSearch
+  # FileCarving
+  ${CMAKE_SOURCE_DIR}/FileCarving
   # WindowsFilesAnalyzer includes
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer
   ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Common
@@ -137,7 +138,8 @@ set(LIB_SOURCES
     LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     AuditLog/AuditLog.cpp
     FullTextSearch/FullTextSearch.cpp
-    FullTextSearch/TextExtractor.cpp)
+    FullTextSearch/TextExtractor.cpp
+    FileCarving/FileCarver.cpp)
 
 # Create executable Create executable
 add_executable(forensic_analyzer main.cpp ${LIB_SOURCES})
