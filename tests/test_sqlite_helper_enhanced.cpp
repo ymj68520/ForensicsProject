@@ -6,7 +6,7 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
-#include "../HTTPServer/HTTPServerEnhanced.h"
+#include "../HTTPServer/HTTPserver.h"
 
 using namespace forensics;
 using json = nlohmann::json;

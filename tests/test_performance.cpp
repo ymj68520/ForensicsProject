@@ -7,7 +7,7 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include "../HTTPServer/HTTPServerEnhanced.h"
+#include "../HTTPServer/HTTPserver.h"
 
 using namespace forensics;
 using json = nlohmann::json;

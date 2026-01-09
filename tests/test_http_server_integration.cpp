@@ -5,7 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <asio.hpp>
 #include <curl/curl.h>
-#include "../HTTPServer/HTTPServerEnhanced.h"
+#include "../HTTPServer/HTTPserver.h"
 
 using namespace forensics;
 using json = nlohmann::json;
@@ -21,7 +21,7 @@ protected:
         // Start HTTP server in a separate thread
         server_port_ = 18080; // Use different port for testing
         ioc_ = std::make_unique<asio::io_context>();
-        server_ = std::make_unique<HTTPServerEnhanced>(*ioc_);
+        server_ = std::make_unique<HTTPServer>(*ioc_);
 
         // Start server thread
         server_thread_ = std::thread([this]() {
@@ -105,7 +105,7 @@ protected:
     }
 
     std::unique_ptr<asio::io_context> ioc_;
-    std::unique_ptr<HTTPServerEnhanced> server_;
+    std::unique_ptr<HTTPServer> server_;
     std::thread server_thread_;
     int server_port_;
     std::string base_url_;

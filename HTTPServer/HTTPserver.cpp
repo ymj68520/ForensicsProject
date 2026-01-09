@@ -1,5 +1,10 @@
 #include "HTTPserver.h"
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+#include <ctime>
+#include <cstdlib>
 /*
  * 一个合法的创建请求如下：
  * curl -X POST http://localhost:8080/tasks 
@@ -22,6 +27,93 @@
  *  "Task not completed yet"
 */
 namespace forensics {
+
+    // ApiResponse implementation
+    nlohmann::json ApiResponse::to_json() const {
+        nlohmann::json response;
+        response["success"] = success;
+        response["message"] = message;
+        response["data"] = data;
+        response["timestamp"] = timestamp;
+        if (!pagination.empty()) {
+            response["pagination"] = pagination;
+        }
+        if (!error_code.empty()) {
+            response["error_code"] = error_code;
+        }
+        return response;
+    }
+
+    ApiResponse ApiResponse::create_success(const std::string& msg, const nlohmann::json& data) {
+        ApiResponse response;
+        response.success = true;
+        response.message = msg;
+        response.data = data ? data : nlohmann::json::object();
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        response.timestamp = std::ctime(&time_t);
+        response.timestamp = response.timestamp.substr(0, response.timestamp.length() - 1); // Remove newline
+        return response;
+    }
+
+    ApiResponse ApiResponse::create_error(const std::string& msg, const std::string& error_code) {
+        ApiResponse response;
+        response.success = false;
+        response.message = msg;
+        response.error_code = error_code;
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        response.timestamp = std::ctime(&time_t);
+        response.timestamp = response.timestamp.substr(0, response.timestamp.length() - 1);
+        return response;
+    }
+
+    // ConnectionPool implementation
+    ConnectionPool::ConnectionPool(const std::string& db_path, size_t max_connections)
+        : db_path_(db_path), max_connections_(max_connections) {
+        connections_.reserve(max_connections_);
+        mutexes_.reserve(max_connections_);
+        
+        // Initialize mutexes and connections
+        for (size_t i = 0; i < max_connections_; ++i) {
+            mutexes_.push_back(std::make_unique<std::mutex>());
+            auto conn = std::make_unique<sqlite3*>();
+            if (sqlite3_open(db_path.c_str(), conn.get()) == SQLITE_OK) {
+                connections_.push_back(std::move(conn));
+            }
+        }
+    }
+
+    ConnectionPool::~ConnectionPool() {
+        for (auto& conn : connections_) {
+            if (conn && *conn) {
+                sqlite3_close(*conn);
+            }
+        }
+    }
+
+    ConnectionPool::ConnectionGuard ConnectionPool::get_connection() {
+        static size_t next_idx = 0;
+        for (size_t i = 0; i < connections_.size(); ++i) {
+            size_t idx = (next_idx + i) % connections_.size();
+            if (connections_[idx] && mutexes_[idx]->try_lock()) {
+                next_idx = (idx + 1) % connections_.size();
+                return ConnectionGuard(*connections_[idx], mutexes_[idx].get());
+            }
+        }
+        // Fallback: wait for the first connection
+        mutexes_[0]->lock();
+        return ConnectionGuard(*connections_[0], mutexes_[0].get());
+    }
+
+    // Static member definitions for SQLiteHelperEnhanced
+    std::unordered_map<std::string, std::shared_ptr<ConnectionPool>> SQLiteHelperEnhanced::connection_pools_;
+    std::mutex SQLiteHelperEnhanced::pool_mutex_;
+    std::unordered_map<std::string, SQLiteHelperEnhanced::CacheEntry> SQLiteHelperEnhanced::query_cache_;
+    std::mutex SQLiteHelperEnhanced::cache_mutex_;
+
+    // SQLiteHelperEnhanced implementation - will be added from HTTPServerEnhanced.cpp
+    // (Implementation will continue in the following section...)
 
     HTTPServer::HTTPServer(asio::io_context& ioc) : task_manager_(TaskManager::instance()), ioc_(ioc) {
         // Basic task management routes
@@ -1959,5 +2051,6 @@ namespace forensics {
         }
         return res;
     }
+
 
 }

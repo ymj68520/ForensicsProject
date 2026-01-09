@@ -104,6 +104,7 @@ set(LIB_SOURCES
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
     HTTPServer/HTTPserver.cpp
+    HTTPServer/TaskManager.cpp
     HTTPServer/SQLiteHelper.cpp
     AndroidAnalyzer/AndroidAnalyzerCore.cpp
     AndroidAnalyzer/AndroidDataParsers.cpp
