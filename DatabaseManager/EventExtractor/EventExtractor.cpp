@@ -310,6 +310,102 @@ bool EventExtractor::insertEvent(const TimelineEvent& event) {
 	return rc == SQLITE_DONE;
 }
 
+bool EventExtractor::importWindowsArtifacts(const std::string& windowsDbPath) {
+    AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Windows artifacts from: " + windowsDbPath);
+    
+    // Attach Windows DB
+    std::string attachSql = "ATTACH DATABASE '" + windowsDbPath + "' AS win_db;";
+    char* errMsg = nullptr;
+    if (sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, &errMsg) != SQLITE_OK) {
+        std::cerr << "Failed to attach Windows DB: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
+
+    // Import Event Logs
+    // Converting timestamp if necessary? Assuming tables store Unix timestamp (seconds) or we might need conversion.
+    // Standard TSK output is Unix.
+    const char* importLogsSql = R"(
+        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
+        SELECT 
+            timestamp, 
+            'WIN_LOG_' || CASE WHEN level IS NULL THEN 'UNK' ELSE level END, 
+            log_source, 
+            0, 
+            'ID:' || event_id || ' ' || message, 
+            0, 
+            'LOG'
+        FROM win_db.event_logs;
+    )";
+    sqlite3_exec(eventDb_, importLogsSql, nullptr, nullptr, nullptr);
+
+    // Import Browser History
+    const char* importBrowserSql = R"(
+        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
+        SELECT 
+            visit_time, 
+            'WEB_HISTORY', 
+            url, 
+            0, 
+            'Title: ' || title || ' (' || browser_name || ')', 
+            0, 
+            'WEB'
+        FROM win_db.browser_history;
+    )";
+    sqlite3_exec(eventDb_, importBrowserSql, nullptr, nullptr, nullptr);
+
+    // Detach
+    sqlite3_exec(eventDb_, "DETACH DATABASE win_db;", nullptr, nullptr, nullptr);
+    std::cout << "Windows artifacts imported into timeline." << std::endl;
+    return true;
+}
+
+bool EventExtractor::importLinuxArtifacts(const std::string& linuxDbPath) {
+    AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Linux artifacts from: " + linuxDbPath);
+
+    std::string attachSql = "ATTACH DATABASE '" + linuxDbPath + "' AS lin_db;";
+    char* errMsg = nullptr;
+    if (sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, &errMsg) != SQLITE_OK) {
+        std::cerr << "Failed to attach Linux DB: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
+
+    // Import Syslogs
+    const char* importSyslogSql = R"(
+        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
+        SELECT 
+            unix_timestamp, 
+            'LINUX_SYSLOG', 
+            log_file, 
+            0, 
+            process || '[' || pid || ']: ' || message, 
+            0, 
+            'LOG'
+        FROM lin_db.linux_log_entries;
+    )";
+    sqlite3_exec(eventDb_, importSyslogSql, nullptr, nullptr, nullptr);
+
+    // Import Login Records
+    const char* importLoginSql = R"(
+        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
+        SELECT 
+            login_time, 
+            'LINUX_LOGIN', 
+            terminal, 
+            0, 
+            'User: ' || username || ' from ' || remote_host, 
+            0, 
+            'AUTH'
+        FROM lin_db.linux_login_records;
+    )";
+    sqlite3_exec(eventDb_, importLoginSql, nullptr, nullptr, nullptr);
+
+    sqlite3_exec(eventDb_, "DETACH DATABASE lin_db;", nullptr, nullptr, nullptr);
+    std::cout << "Linux artifacts imported into timeline." << std::endl;
+    return true;
+}
+
 void EventExtractor::closeDatabases() {
 	if (sourceDb_) {
 		sqlite3_close(sourceDb_);

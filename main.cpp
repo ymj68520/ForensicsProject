@@ -47,7 +47,10 @@ struct CommandLineArgs {
 	
 	// File Carving options
 	bool carveMode = false;
-	std::string carveOutputDir = "carved_files";
+    std::string carveOutputDir = "carved_files";
+    // Metadata Recovery options
+    bool recoverDeletedMode = false;
+    std::string recoverOutputDir = "recovered_files";
 };
 
 void printUsage(const char* programName) {
@@ -158,6 +161,11 @@ CommandLineArgs parseArgs(int argc, char* argv[]) {
 			args.carveMode = true;
 		} else if (arg == "--carve-out" && i + 1 < argc) {
 			args.carveOutputDir = argv[++i];
+		} else if (arg == "--recover-deleted") {
+			args.recoverDeletedMode = true;
+			if (i + 1 < argc && argv[i + 1][0] != '-') {
+				 args.recoverOutputDir = argv[++i];
+			}
 		} else if (arg[0] != '-') {
 			// Assume it's image path if no leading dash
 			args.imagePath = arg;
@@ -298,6 +306,44 @@ int main(int argc, char* argv[]) {
 		std::cout << "Carving finished. recovered " << recovered << " files to " << cmdArgs.carveOutputDir << std::endl;
 		return 0;
 	}
+
+    // Metadata Recovery
+    if (cmdArgs.recoverDeletedMode) {
+        std::cout << "\n=== Starting Metadata Recovery ===" << std::endl;
+        
+        // Use raw db path convention
+        std::string baseName = getBaseName(cmdArgs.imagePath);
+		std::string outPrefix = "";
+		if (!cmdArgs.dbOutputDir.empty()) {
+			outPrefix = cmdArgs.dbOutputDir + "/";
+		}
+		std::string rawDbPath = outPrefix + baseName + "_raw.db";
+
+        // Check if DB exists, if not, warn user they should run analysis first
+        if (!fs::exists(rawDbPath)) {
+            std::cout << "Warning: Analysis database " << rawDbPath << " not found." << std::endl;
+            std::cout << "Running analysis first..." << std::endl;
+            // Fallthrough to analysis mode? 
+            // Better to instantiate ImageAnalyzer and run analysis here if needed, 
+            // OR just error out for now to keep it simple, OR proceed with analysis flow but add recovery step.
+            // Let's rely on the user running analysis, or we just proceed to analysis mode?
+            // Actually, if we are in this block, we assume we want to do recovery.
+            // Let's modify the flow: If recoverDeletedMode is ON, we do the recovery AFTER analysis (if analysis happens)
+            // or we try to open existing DB.
+        }
+
+        // Logic: If DB exists, use it. If not, we might need to run analysis. 
+        // But for simplicity, let's assume we run analysis if we fall through.
+        // So, let's put this Check inside the "Analysis Mode" block or make it a separate step at the end of Analysis Mode.
+        // Actually, the main structure is:
+        // if (extractMode) { ... } else { Analysis Mode ... }
+        // We should add Recovery as a step in Analysis Mode, or a standalone mode that *uses* Analysis results.
+        
+        // Let's put it at the END of Analysis Mode loop (around line 533), 
+        // OR here if we want to run it standalone.
+        // If we put it here, we duplicate DB path logic.
+        // Let's put it inside the "Analysis Mode" block (lines 403+), as Step 7.
+    } 
 
 	// Determine mode: extraction or analysis
 	if (cmdArgs.extractMode) {
@@ -443,19 +489,8 @@ int main(int argc, char* argv[]) {
 			std::cout << "✓ Raw database created: " << rawDbPath << std::endl;
 			std::cout << std::endl;
 
-			// Step 2: Extract filesystem events
-			std::cout << "[2/3] Extracting filesystem events..." << std::endl;
-			auto eventExtractor = std::make_unique<EventExtractor>(rawDbPath, eventDbPath);
-
-			if (!eventExtractor->extractEvents()) {
-				std::cerr << "Error: Failed to extract events" << std::endl;
-				return 1;
-			}
-			std::cout << "✓ Event database created: " << eventDbPath << std::endl;
-			std::cout << std::endl;
-
-			// Step 3: Classify files by type
-			std::cout << "[3/3] Classifying files by type..." << std::endl;
+			// Step 2: Classify files by type
+			std::cout << "[2/3] Classifying files by type..." << std::endl;
 			auto fileClassifier = std::make_unique<FileClassifier>(rawDbPath, fileDbPath);
 
 			if (!fileClassifier->classifyAndExtract()) {
@@ -504,12 +539,12 @@ int main(int argc, char* argv[]) {
 			}
 
 			// Step 6: Analyze Linux data if requested
+			std::string linuxDbPath = outPrefix + baseName + "_linux.db";
 			if (cmdArgs.linuxAnalyze) {
-				std::cout << "[6/6] Analyzing Linux artifacts..." << std::endl;
+				std::cout << "[Analyzing Linux artifacts...]" << std::endl;
 				auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
 				auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
 
-				std::string linuxDbPath = outPrefix + baseName + "_linux.db";
 				linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
 
 				if (!linuxAnalyzer->initialize()) {
@@ -521,6 +556,36 @@ int main(int argc, char* argv[]) {
 				std::cout << "✓ Linux artifacts analysis completed" << std::endl;
 				std::cout << std::endl;
 			}
+
+            // Step 7: Super Timeline Generation (Event Extractor)
+            std::cout << "[Generating Super Timeline...]" << std::endl;
+            auto eventExtractor = std::make_unique<EventExtractor>(rawDbPath, eventDbPath);
+            if (eventExtractor->extractEvents()) {
+                // Import optional artifacts
+                if (cmdArgs.windowsAnalyze && fs::exists(outPrefix + baseName + "_windows.db")) {
+                    eventExtractor->importWindowsArtifacts(outPrefix + baseName + "_windows.db");
+                }
+                if (cmdArgs.linuxAnalyze && fs::exists(linuxDbPath)) {
+                    eventExtractor->importLinuxArtifacts(linuxDbPath);
+                }
+                std::cout << "✓ Super Timeline created: " << eventDbPath << std::endl;
+            } else {
+                 std::cerr << "Error: Failed to generate timeline" << std::endl;
+            }
+            std::cout << std::endl;
+
+            // Step 8: Metadata Recovery
+            if (cmdArgs.recoverDeletedMode) {
+                std::cout << "[7/7] Recovering deleted files (Metadata)..." << std::endl;
+                FileExtractor extractor(imagePath, rawDbPath);
+                if (extractor.initialize()) {
+                    int count = extractor.extractDeleted(cmdArgs.recoverOutputDir);
+                    std::cout << "✓ Metadata Verification/Recovery Complete. Recovered " << count << " files to " << cmdArgs.recoverOutputDir << std::endl;
+                } else {
+                     std::cerr << "Failed to initialize Metadata Recovery." << std::endl;
+                }
+                std::cout << std::endl;
+            }
 
 			// Summary
 			std::cout << "=== Analysis Complete ===" << std::endl;

@@ -59,6 +59,13 @@ public:
     int extractAll(const std::string& outputDir, bool includeDeleted = false);
 
     /**
+     * Extract only deleted files from the image
+     * @param outputDir Output directory for extracted files
+     * @return Number of files extracted
+     */
+    int extractDeleted(const std::string& outputDir);
+
+    /**
      * Extract a specific file by inode
      * @param inode File inode number
      * @param outputPath Output file path

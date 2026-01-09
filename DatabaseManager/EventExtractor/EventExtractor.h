@@ -23,6 +23,9 @@ public:
 
 	bool extractEvents();
 
+    bool importWindowsArtifacts(const std::string& windowsDbPath);
+    bool importLinuxArtifacts(const std::string& linuxDbPath);
+
 private:
 	std::string sourceDbPath_;
 	std::string eventDbPath_;

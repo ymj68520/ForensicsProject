@@ -4,6 +4,7 @@
 
 #include <string>
 #include <cstdint>
+#include "../DatabaseManager/DatabaseManagerDataTypes.h"
 
 /**
  * @brief XFS filesystem operation mode

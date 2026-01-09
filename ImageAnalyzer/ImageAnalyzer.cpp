@@ -2,6 +2,7 @@
 #include "DatabaseManager/DatabaseManager.h"
 #include "XFSHelper.h"
 #include "NativeFilesystemWalker.h"
+#include "TskFilesystemWalker.h"
 #include "AuditLog/AuditLog.h"
 #include <iostream>
 #include <cstring>
@@ -239,45 +240,40 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		}
 	}
 
-	// Auto mode or non-XFS filesystem: try TSK first
-	// On Linux with XFS, fsInfo_ might be null if TSK couldn't open it
-	// In that case, go directly to native mount
-	if (isXFS_ && !fsInfo_) {
-#ifdef __linux__
-		std::cout << "TSK could not open XFS filesystem" << std::endl;
-		std::cout << "Using native mount method..." << std::endl;
-		return extractWithNativeMount(dbPath);
-#else
-		std::cerr << "Error: Filesystem not opened" << std::endl;
-		return false;
-#endif
+	// Auto mode or non-XFS filesystem: try TSK first using Universal Walker
+	tskWalker_ = std::make_unique<TskFilesystemWalker>(imgInfo_, partitionOffset_);
+	
+	if (tskWalker_->open()) {
+		std::cout << "Walking filesystem using Universal TSK Walker (" << tskWalker_->getFsType() << ")..." << std::endl;
+		
+		int fileCount = 0;
+		bool success = tskWalker_->walk([this, &fileCount](const FileRecord& record) -> bool {
+			if (dbManager_->insertFileRecord(record)) {
+				fileCount++;
+				if (fileCount <= 20) {
+					std::cout << "  [" << fileCount << "] " << record.path << std::endl;
+				}
+			}
+			return true;
+		});
+
+		tskWalker_->close();
+		
+		if (success && fileCount > 0) {
+			std::cout << "Filesystem walk completed. Total files: " << fileCount << std::endl;
+			AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE", "Filesystem walk completed for: " + imagePath_);
+			return true;
+		} else {
+			std::cout << "TSK walk finished with 0 files or error." << std::endl;
+		}
+	} else {
+		std::cout << "TSK could not open filesystem at offset " << partitionOffset_ << std::endl;
 	}
 
-	std::cout << "Walking filesystem (root inode: " << fsInfo_->root_inum << ")..." << std::endl;
-
-	// For XFS or if dir_walk doesn't work, try using tsk_fs_file_walk (inode walk) instead
-	int result = -1;
-	int fileCount = 0;
-
-	// First try directory walk
-	result = tsk_fs_dir_walk(fsInfo_, fsInfo_->root_inum,
-		static_cast<TSK_FS_DIR_WALK_FLAG_ENUM>(
-			TSK_FS_DIR_WALK_FLAG_RECURSE | TSK_FS_DIR_WALK_FLAG_ALLOC |
-			TSK_FS_DIR_WALK_FLAG_UNALLOC),
-		fileWalkCallback, this);
-
-	if (result != 0) {
-		std::cout << "Directory walk returned: " << result << std::endl;
-		std::cout << "Note: " << (result == 0 ? "Success" : "Failed or limited results") << std::endl;
-	}
-
-	// Check if any files were processed
-	// If this is XFS and TSK failed to extract files, use alternative methods
-	if (isXFS_ && fileCount == 0 && xfsMode_ == XFSMode::Auto) {
-		std::cout << "TSK directory walk found no files on XFS filesystem" << std::endl;
-
+	// Falls through to XFS/Native fallback if TSK failed
+	if (isXFS_) {
 #ifdef __linux__
-		std::cout << "Switching to native mount method for XFS parsing..." << std::endl;
+		std::cout << "Switching to native mount method for XFS..." << std::endl;
 		return extractWithNativeMount(dbPath);
 #else
 		std::cout << "Switching to XFS helper for direct XFS parsing..." << std::endl;
@@ -285,77 +281,14 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 #endif
 	}
 
-	std::cout << "Filesystem walk completed" << std::endl;
-	AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE", "Filesystem walk completed for: " + imagePath_);
-
-	return true;
+	return false;
 }
 
-TSK_WALK_RET_ENUM ImageAnalyzer::fileWalkCallback(TSK_FS_FILE* fsFile,
-	const char* path,
-	void* ptr) {
-	ImageAnalyzer* analyzer = static_cast<ImageAnalyzer*>(ptr);
-
-	if (!fsFile || !fsFile->name) {
-		return TSK_WALK_CONT;
-	}
-
-	// Debug output for first few files
-	static int count = 0;
-	if (count < 10) {
-		std::cout << "  Processing: " << path << fsFile->name->name << std::endl;
-		count++;
-	}
-
-	std::string fullPath = std::string(path) + fsFile->name->name;
-	analyzer->processFile(fsFile, fullPath);
-
-	return TSK_WALK_CONT;
-}
-
-bool ImageAnalyzer::processFile(TSK_FS_FILE* fsFile, const std::string& path) {
-	if (!fsFile || !fsFile->name || !fsFile->meta) {
-		return false;
-	}
-
-	FileRecord record;
-	record.inode = fsFile->name->meta_addr;
-	record.name = fsFile->name->name;
-	record.path = path;
-	record.size = fsFile->meta->size;
-	record.atime = fsFile->meta->atime;
-	record.mtime = fsFile->meta->mtime;
-	record.ctime = fsFile->meta->ctime;
-	record.crtime = fsFile->meta->crtime;
-
-	// Determine file type
-	switch (fsFile->meta->type) {
-	case TSK_FS_META_TYPE_REG:
-		record.type = "REG";
-		break;
-	case TSK_FS_META_TYPE_DIR:
-		record.type = "DIR";
-		break;
-	case TSK_FS_META_TYPE_LNK:
-		record.type = "LNK";
-		break;
-	default:
-		record.type = "OTHER";
-		break;
-	}
-
-	record.isDeleted = (fsFile->name->flags & TSK_FS_NAME_FLAG_UNALLOC) ? 1 : 0;
-	record.isAllocated = (fsFile->meta->flags & TSK_FS_META_FLAG_ALLOC) ? 1 : 0;
-	record.uid = fsFile->meta->uid;
-	record.gid = fsFile->meta->gid;
-
-	// Format permissions
-	std::ostringstream perms;
-	perms << std::oct << fsFile->meta->mode;
-	record.permissions = perms.str();
-
-	return dbManager_->insertFileRecord(record);
-}
+// REMOVED old declaration of fileWalkCallback and processFile since they are now in TskFilesystemWalker
+/*
+TSK_WALK_RET_ENUM ImageAnalyzer::fileWalkCallback(...) { ... }
+bool ImageAnalyzer::processFile(...) { ... }
+*/
 
 std::string ImageAnalyzer::detectImageType() {
 	if (!imgInfo_) return "Unknown";

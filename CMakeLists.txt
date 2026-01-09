@@ -108,7 +108,9 @@ set(LIB_SOURCES
     DatabaseManager/FileClassifier/EncryptionUtils.cpp
     DatabaseManager/FileExtractor/FileExtractor.cpp
     ImageAnalyzer/XFSHelper.cpp
+    ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
+    ImageAnalyzer/TskFilesystemWalker.cpp
     HTTPServer/HTTPserver.cpp
     HTTPServer/TaskManager.cpp
     HTTPServer/SQLiteHelper.cpp

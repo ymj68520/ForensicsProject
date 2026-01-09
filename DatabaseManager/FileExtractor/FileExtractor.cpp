@@ -359,6 +359,42 @@ int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted)
     return extracted;
 }
 
+int FileExtractor::extractDeleted(const std::string& outputDir) {
+    std::cout << "Extracting deleted files (Metadata Recovery)..." << std::endl;
+
+    // files where is_deleted = 1
+    std::string whereClause = "is_deleted=1";
+
+    auto files = searchFiles(whereClause);
+    std::cout << "Found " << files.size() << " deleted files to recover" << std::endl;
+
+    if (files.empty()) {
+        return 0;
+    }
+
+    int extracted = 0;
+    for (size_t i = 0; i < files.size(); i++) {
+        const auto& file = files[i];
+        std::string outputPath = generateOutputPath(outputDir, file);
+        
+        // Add "recovered_" prefix or similar if needed? 
+        // No, keep original name structure, but maybe ensure outputDir is distinct.
+        
+        if (i < 10 || i % 50 == 0) {
+            std::cout << "Recovering [" << (i + 1) << "/" << files.size() << "]: " 
+                      << file.path << std::endl;
+        }
+
+        if (extractFile(file, outputPath)) {
+            extracted++;
+        } else {
+             std::cerr << "  Failed to recover: " << file.path << " (Content might be overwritten)" << std::endl;
+        }
+    }
+
+    return extracted;
+}
+
 bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputPath) {
     auto files = searchFiles("inode=" + std::to_string(inode));
     if (files.empty()) {
