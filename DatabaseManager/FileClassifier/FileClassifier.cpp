@@ -1,6 +1,7 @@
 #include "FileClassifier.h"
 #include "../SQL/file_classifier_sql.h"
 #include "../AuditLog/AuditLog.h"
+#include "EncryptionUtils.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -281,6 +282,13 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 	}
 
 	// 3. Enhanced Classification Logic
+	
+	// Priority 0: Check for encryption (Magic Bytes & High Entropy)
+	// This overrides extension based check if meaningful encryption is detected
+	if (EncryptionUtils::isEncrypted(path)) {
+		return FileCategory::ENCRYPTED;
+	}
+
 	// Priority 1: Check filename patterns for known system files
 	if (isSystemConfigFile(filename)) {
 		return FileCategory::OS_CONFIG;

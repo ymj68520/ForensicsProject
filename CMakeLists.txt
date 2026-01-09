@@ -104,6 +104,7 @@ set(LIB_SOURCES
     DatabaseManager/DatabaseManager.cpp
     DatabaseManager/EventExtractor/EventExtractor.cpp
     DatabaseManager/FileClassifier/FileClassifier.cpp
+    DatabaseManager/FileClassifier/EncryptionUtils.cpp
     DatabaseManager/FileExtractor/FileExtractor.cpp
     ImageAnalyzer/XFSHelper.cpp
     ImageAnalyzer/NativeFilesystemWalker.cpp
