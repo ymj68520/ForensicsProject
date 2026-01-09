@@ -7,15 +7,11 @@
 #include <vector>
 #include <tsk/libtsk.h>
 
+#include "ImageAnalyzerDataTypes.h"
+
 class DatabaseManager;
 class XFSHelper;
 class NativeFilesystemWalker;
-
-enum class XFSMode {
-	Auto,      // Auto-detect (native on Linux, pure on Windows)
-	Native,    // Linux native mount (requires sudo)
-	Pure       // Pure XFS parser (cross-platform)
-};
 
 class ImageAnalyzer {
 public:

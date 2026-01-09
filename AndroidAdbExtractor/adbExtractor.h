@@ -6,6 +6,7 @@
 #include <string>
 
 #include "adbClient.h"
+#include "AndroidAdbExtractorDataTypes.h"
 
 #ifdef _WIN32
 #include <direct.h>
@@ -15,18 +16,6 @@
 #include <sys/types.h>
 #define mkdir_cross(dir) mkdir(dir, 0755)
 #endif
-
-struct PartitionInfo {
-    std::string name;           // 分区名称 (如 "vbmeta", "boot")
-    std::string device_path;     // 设备路径 (如 "/dev/block/by-name/vbmeta")
-    std::string block_device;    // 实际块设备路径 (如 "/dev/block/sde12")
-    uint64_t size;              // 分区大小 (字节)
-    std::string type;           // 分区类型 (如 "emmc", "ufs")
-    bool is_readable;           // 是否可读
-    bool requires_root;         // 是否需要root权限
-
-    PartitionInfo() : size(0), is_readable(false), requires_root(true) {}
-};
 
 class AndroidDirectoryExtractor{
     private:

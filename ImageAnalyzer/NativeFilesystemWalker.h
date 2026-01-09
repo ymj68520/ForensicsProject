@@ -4,25 +4,11 @@
 #include <functional>
 #include <cstdint>
 
+#include "ImageAnalyzerDataTypes.h"
+
 // Forward declarations
 struct TSK_IMG_INFO;
 class DatabaseManager;
-
-// File information structure (matches XFSFileInfo for consistency)
-struct NativeFileInfo {
-    uint64_t inode;
-    std::string name;
-    std::string path;
-    uint64_t size;
-    int64_t atime;
-    int64_t mtime;
-    int64_t ctime;
-    uint16_t mode;
-    uint32_t uid;
-    uint32_t gid;
-    bool is_directory;
-    bool is_allocated;
-};
 
 #ifdef __linux__
 
