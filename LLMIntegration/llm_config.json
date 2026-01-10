@@ -1,0 +1,143 @@
+{
+  "lm_studio": {
+    "base_url": "http://localhost:1234",
+    "timeout_seconds": 30,
+    "api_key": "",
+    "cache_enabled": true,
+    "cache_ttl_seconds": 300
+  },
+  "model_management": {
+    "auto_model_selection": true,
+    "selection_strategy": "performance_based",
+    "max_concurrent_tasks": 5,
+    "preferred_models": {
+      "EVIDENCE_SUMMARY": "qwen2-7b-instruct",
+      "IMAGE_ANALYSIS": "llava-v1.6-34b",
+      "CONVERSATION_ANALYSIS": "llama3-8b-instruct",
+      "REPORT_GENERATION": "qwen2-7b-instruct",
+      "ANOMALY_DETECTION": "llama3-8b-instruct"
+    },
+    "default_models": [
+      {
+        "model_id": "llama3.1-8b-instruct",
+        "name": "轻量级分类器",
+        "max_tokens": 2048,
+        "context_length": 8192,
+        "default_temperature": 0.1,
+        "inference_speed": 50.0,
+        "memory_usage": 8.0,
+        "is_multimodal": false,
+        "capabilities": ["TEXT_PROCESSING", "CLASSIFICATION", "FAST_INFERENCE"],
+        "description": "用于任务分类和轻量级分析的模型"
+      },
+      {
+        "model_id": "qwen2-7b-instruct",
+        "name": "通用分析模型",
+        "max_tokens": 4096,
+        "context_length": 32768,
+        "default_temperature": 0.3,
+        "inference_speed": 25.0,
+        "memory_usage": 14.0,
+        "is_multimodal": false,
+        "capabilities": ["TEXT_PROCESSING", "ANALYSIS", "REASONING", "CHINESE_PROCESSING"],
+        "description": "通用文本分析模型，支持中文"
+      },
+      {
+        "model_id": "llava-v1.6-34b",
+        "name": "多模态模型",
+        "max_tokens": 4096,
+        "context_length": 4096,
+        "default_temperature": 0.2,
+        "inference_speed": 5.0,
+        "memory_usage": 24.0,
+        "is_multimodal": true,
+        "capabilities": ["MULTIMODAL", "IMAGE_PROCESSING", "TEXT_PROCESSING"],
+        "description": "支持图像和文本的多模态模型"
+      }
+    ]
+  },
+  "task_classifier": {
+    "use_intelligent_classifier": true,
+    "confidence_threshold": 0.7,
+    "classification_model": "llama3-8b-instruct"
+  },
+  "analysis_service": {
+    "default_parameters": {
+      "default_temperature": "0.3",
+      "default_max_tokens": "2048",
+      "quality_threshold": "0.7",
+      "enable_validation": "true",
+      "cache_enabled": "true",
+      "retry_attempts": "3"
+    },
+    "analysis_templates": {
+      "evidence_analysis": {
+        "name": "证据分析",
+        "system_prompt": "你是一位专业的数字取证专家。请对提供的证据进行深入分析。",
+        "required_fields": ["content", "type"],
+        "default_weights": {
+          "relevance": 0.3,
+          "suspiciousness": 0.3,
+          "completeness": 0.2,
+          "accuracy": 0.2
+        }
+      },
+      "conversation_analysis": {
+        "name": "对话分析",
+        "system_prompt": "你是一位专业的对话分析专家。请分析提供的对话记录。",
+        "required_fields": ["messages", "participants"],
+        "default_weights": {
+          "relevance": 0.25,
+          "completeness": 0.25,
+          "accuracy": 0.25,
+          "insightfulness": 0.25
+        }
+      }
+    }
+  },
+  "http_server": {
+    "port": 8080,
+    "api_prefix": "/api/llm",
+    "cors_enabled": true,
+    "allowed_origins": ["*"],
+    "max_request_size": 10485760,
+    "enable_auth": false,
+    "auth_secret": ""
+  },
+  "presets": {
+    "malware_analysis": {
+      "focus": "malware_behavior,file_modifications,network_connections,process_creation",
+      "depth": "deep",
+      "include_memory_analysis": "true",
+      "check_persistence_mechanisms": "true",
+      "analyze_anti_forensics": "true"
+    },
+    "network_intrusion": {
+      "focus": "unauthorized_access,privilege_escalation,data_exfiltration,lateral_movement",
+      "depth": "comprehensive",
+      "include_traffic_analysis": "true",
+      "check_firewall_bypass": "true",
+      "analyze_attacker_tools": "true"
+    },
+    "data_leakage": {
+      "focus": "sensitive_data,access_patterns,exfiltration_methods,insider_threats",
+      "depth": "thorough",
+      "include_data_classification": "true",
+      "check_upload_services": "true",
+      "analyze_communication_channels": "true"
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file_path": "logs/llm_integration.log",
+    "max_file_size": 104857600,
+    "max_files": 5,
+    "enable_console": true
+  },
+  "monitoring": {
+    "enable_metrics": true,
+    "metrics_port": 9090,
+    "health_check_interval": 30,
+    "performance_tracking": true
+  }
+}
