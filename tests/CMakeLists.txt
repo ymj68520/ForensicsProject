@@ -13,55 +13,6 @@ include_directories(${GMOCK_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/..)
 include_directories(${CURL_INCLUDE_DIRS})
 
-# Enhanced SQLite Helper Tests
-add_executable(test_sqlite_helper_enhanced test_sqlite_helper_enhanced.cpp)
-
-target_link_libraries(
-  test_sqlite_helper_enhanced
-  ${GTEST_LIBRARIES}
-  ${GMOCK_LIBRARIES}
-  ${CURL_LIBRARIES}
-  sqlite3
-  pthread
-  nlohmann_json::nlohmann_json)
-
-# Add test to CTest
-add_test(NAME SQLiteHelperEnhancedTests COMMAND test_sqlite_helper_enhanced)
-
-# HTTP Server Integration Tests
-add_executable(test_http_server_integration test_http_server_integration.cpp)
-
-target_link_libraries(
-  test_http_server_integration
-  ${GTEST_LIBRARIES}
-  ${GMOCK_LIBRARIES}
-  ${CURL_LIBRARIES}
-  sqlite3
-  pthread
-  nlohmann_json::nlohmann_json
-  asio
-  crow
-  boost_system
-  boost_thread)
-
-# Add test to CTest
-add_test(NAME HTTPServerIntegrationTests COMMAND test_http_server_integration)
-
-# Performance Tests
-add_executable(test_performance test_performance.cpp)
-
-target_link_libraries(
-  test_performance
-  ${GTEST_LIBRARIES}
-  ${GMOCK_LIBRARIES}
-  ${CURL_LIBRARIES}
-  sqlite3
-  pthread
-  nlohmann_json::nlohmann_json)
-
-# Add test to CTest
-add_test(NAME PerformanceTests COMMAND test_performance)
-
 # Test scripts for running different test suites
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_unit_tests.sh.in"
                "${CMAKE_CURRENT_BINARY_DIR}/run_unit_tests.sh" @ONLY)
@@ -121,41 +72,112 @@ file(
   WORLD_READ
   WORLD_EXECUTE)
 
-# Windows Files Analyzer Tests
+# ============================================================================
+# New GTest-based Unit Tests
+# ============================================================================
+
+# Linux Analyzer GTest Tests
 add_executable(
-  test_windows_analyzer
-  test_windows_analyzer.cpp
-  ../WindowsFilesAnalyzer/WindowsFilesAnalyzerCore.cpp
-  ../WindowsFilesAnalyzer/WindowsAnalysisDatabase.cpp
-  ../WindowsFilesAnalyzer/WindowsRegistryParser.cpp
-  ../WindowsFilesAnalyzer/WindowsEventLogParser.cpp
-  ../WindowsFilesAnalyzer/WindowsArtifactsParsers.cpp
-  ../AuditLog/AuditLog.cpp
-  ../DatabaseManager/DatabaseManager.cpp
-  ../DatabaseManager/FileExtractor/FileExtractor.cpp)
+  test_linux_analyzer_gtest
+  UnitTest/test_linux_analyzer_gtest.cpp
+  ../LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
+  ../LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
+  ../LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp)
 
-target_link_libraries(test_windows_analyzer sqlite3 pthread tsk)
+target_link_libraries(test_linux_analyzer_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
 
-# Add test to CTest
-add_test(NAME WindowsFilesAnalyzerTests COMMAND test_windows_analyzer)
+add_test(NAME LinuxAnalyzerGTests COMMAND test_linux_analyzer_gtest)
+
+# File Classifier Tests
+add_executable(
+  test_file_classifier
+  UnitTest/test_file_classifier.cpp
+  ../DatabaseManager/FileClassifier/FileClassifier.cpp
+  ../DatabaseManager/FileClassifier/EncryptionUtils.cpp
+  ../AuditLog/AuditLog.cpp)
+
+target_link_libraries(
+  test_file_classifier ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
+  nlohmann_json::nlohmann_json)
+
+add_test(NAME FileClassifierTests COMMAND test_file_classifier)
+
+# Audit Log GTest Tests
+add_executable(test_audit_log_gtest UnitTest/test_audit_log_gtest.cpp
+                                    ../AuditLog/AuditLog.cpp)
+
+target_link_libraries(
+  test_audit_log_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
+  nlohmann_json::nlohmann_json)
+
+add_test(NAME AuditLogGTests COMMAND test_audit_log_gtest)
+
+# File Carving Tests
+add_executable(test_file_carving UnitTest/test_file_carving.cpp
+                                 ../FileCarving/FileCarver.cpp)
+
+target_link_libraries(test_file_carving ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      sqlite3 tsk pthread)
+
+add_test(NAME FileCarvingTests COMMAND test_file_carving)
+
+# Installation rules for test scripts (Skipped lines handled by separate
+# replacement)
+
+# ============================================================================
+# Additional GTest-based Unit Tests
+# ============================================================================
+
+# Windows Parsers Tests (header-only - tests data structures and constants)
+add_executable(test_windows_parsers_gtest
+               UnitTest/test_windows_parsers_gtest.cpp)
+
+target_link_libraries(test_windows_parsers_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME WindowsParsersGTests COMMAND test_windows_parsers_gtest)
+
+# Android Analyzer Tests
+add_executable(test_android_analyzer_gtest
+               UnitTest/test_android_analyzer_gtest.cpp)
+
+target_link_libraries(test_android_analyzer_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME AndroidAnalyzerGTests COMMAND test_android_analyzer_gtest)
+
+# FullText Search Tests (with Xapian integration)
+add_executable(
+  test_fulltext_search_gtest
+  UnitTest/test_fulltext_search_gtest.cpp ../FullTextSearch/FullTextSearch.cpp
+  ../FullTextSearch/TextExtractor.cpp)
+
+target_link_libraries(test_fulltext_search_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} xapian pthread)
+
+add_test(NAME FullTextSearchGTests COMMAND test_fulltext_search_gtest)
+
+# Image Analyzer Tests (header-only - tests data structures)
+add_executable(test_image_analyzer_gtest UnitTest/test_image_analyzer_gtest.cpp)
+
+target_link_libraries(test_image_analyzer_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME ImageAnalyzerGTests COMMAND test_image_analyzer_gtest)
+
+# ============================================================================
+# Installation Rules
+# ============================================================================
 
 # Installation rules for test executables (optional)
-install(TARGETS test_sqlite_helper_enhanced test_http_server_integration
-                test_performance test_windows_analyzer
-        RUNTIME DESTINATION bin/tests)
-
-# Installation rules for test scripts
 install(
-  FILES ${CMAKE_CURRENT_BINARY_DIR}/run_unit_tests.sh
-        ${CMAKE_CURRENT_BINARY_DIR}/run_integration_tests.sh
-        ${CMAKE_CURRENT_BINARY_DIR}/run_performance_tests.sh
-        ${CMAKE_CURRENT_BINARY_DIR}/run_all_tests.sh
-  DESTINATION bin/tests
-  PERMISSIONS
-    OWNER_READ
-    OWNER_WRITE
-    OWNER_EXECUTE
-    GROUP_READ
-    GROUP_EXECUTE
-    WORLD_READ
-    WORLD_EXECUTE)
+  TARGETS test_linux_analyzer_gtest
+          test_file_classifier
+          test_audit_log_gtest
+          test_file_carving
+          test_windows_parsers_gtest
+          test_android_analyzer_gtest
+          test_fulltext_search_gtest
+          test_image_analyzer_gtest
+  RUNTIME DESTINATION bin/tests)

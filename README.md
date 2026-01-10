@@ -115,6 +115,14 @@ cd sleuthkit-4.14.0
 make
 sudo make install
 sudo ldconfig
+
+# 安装 google test 框架
+sudo apt install libgtest-dev libgmock-dev
+# 编译并安装 gtest/gmock 静态库
+cd /usr/src/googletest        # 24.04 是这个目录，旧版本可能是 /usr/src/gtest
+sudo cmake -B build -S .      # 生成 Makefile
+sudo cmake --build build      # 编译
+sudo cmake --install build    # 把 .a 装到 /usr/local/lib，把头文件放到 /usr/local/include
 ```
 
 ## 测试镜像生成

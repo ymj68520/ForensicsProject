@@ -1134,3 +1134,239 @@ std::vector<LinuxLoginRecord> LinuxFilesAnalyzer::parseWtmpFile(const std::strin
 std::vector<LinuxLoginRecord> LinuxFilesAnalyzer::parseBtmpFile(const std::string& btmpPath) {
     return LinuxUserParser::parseBtmpFile(btmpPath);
 }
+
+// ============================================================================
+// RPM Package Manager Support
+// ============================================================================
+
+std::string LinuxFilesAnalyzer::detectLinuxDistribution() {
+    // Try to detect Linux distribution type
+    std::string distro = "unknown";
+    
+    // Check for /etc/os-release (modern standard)
+    auto osReleaseFiles = queryFilesByPattern("%/etc/os-release");
+    for (const auto& file : osReleaseFiles) {
+        std::string extractPath = getExtractPath("etc/os-release");
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream f(extractPath);
+            if (f.is_open()) {
+                std::string line;
+                while (std::getline(f, line)) {
+                    if (line.find("ID=") == 0) {
+                        distro = line.substr(3);
+                        // Remove quotes if present
+                        if (!distro.empty() && distro[0] == '"') {
+                            distro = distro.substr(1, distro.length() - 2);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        break;
+    }
+    
+    // Fallback: check for distro-specific files
+    if (distro == "unknown") {
+        auto debianFiles = queryFilesByPattern("%/etc/debian_version");
+        if (!debianFiles.empty()) {
+            distro = "debian";
+        }
+        
+        auto redhatFiles = queryFilesByPattern("%/etc/redhat-release");
+        if (!redhatFiles.empty()) {
+            distro = "rhel";
+        }
+        
+        auto fedoraFiles = queryFilesByPattern("%/etc/fedora-release");
+        if (!fedoraFiles.empty()) {
+            distro = "fedora";
+        }
+        
+        auto centosFiles = queryFilesByPattern("%/etc/centos-release");
+        if (!centosFiles.empty()) {
+            distro = "centos";
+        }
+    }
+    
+    return distro;
+}
+
+bool LinuxFilesAnalyzer::isRpmBasedDistro() {
+    std::string distro = detectLinuxDistribution();
+    
+    // Common RPM-based distributions
+    static const std::vector<std::string> rpmDistros = {
+        "rhel", "centos", "fedora", "rocky", "alma", "ol", "amzn",
+        "suse", "opensuse", "opensuse-leap", "opensuse-tumbleweed"
+    };
+    
+    for (const auto& d : rpmDistros) {
+        if (distro.find(d) != std::string::npos) {
+            return true;
+        }
+    }
+    
+    // Also check for RPM database presence
+    auto rpmDbFiles = queryFilesByPattern("%/var/lib/rpm/Packages");
+    if (!rpmDbFiles.empty()) {
+        return true;
+    }
+    
+    auto rpmDbNewFiles = queryFilesByPattern("%/var/lib/rpm/rpmdb.sqlite");
+    return !rpmDbNewFiles.empty();
+}
+
+bool LinuxFilesAnalyzer::isDpkgBasedDistro() {
+    std::string distro = detectLinuxDistribution();
+    
+    // Common DPKG-based distributions
+    static const std::vector<std::string> dpkgDistros = {
+        "debian", "ubuntu", "mint", "pop", "elementary", "kali", "raspbian"
+    };
+    
+    for (const auto& d : dpkgDistros) {
+        if (distro.find(d) != std::string::npos) {
+            return true;
+        }
+    }
+    
+    // Also check for dpkg database presence
+    auto dpkgFiles = queryFilesByPattern("%/var/lib/dpkg/status");
+    return !dpkgFiles.empty();
+}
+
+std::vector<PackageInfo> LinuxFilesAnalyzer::parseRpmDatabase(const std::string& rpmDbPath) {
+    std::vector<PackageInfo> packages;
+    
+    // The RPM database can be in different formats:
+    // - Legacy BerkeleyDB format (/var/lib/rpm/Packages)
+    // - Modern SQLite format (/var/lib/rpm/rpmdb.sqlite)
+    // - Plain text from rpm -qa --queryformat output
+    
+    // For forensic purposes, we'll try to parse what we can
+    // The safest approach is to try the SQLite format first (newer RPM versions)
+    
+    std::ifstream file(rpmDbPath);
+    if (!file.is_open()) {
+        return packages;
+    }
+    
+    // Check if it's a SQLite database (starts with "SQLite format 3")
+    char header[16] = {0};
+    file.read(header, 16);
+    file.seekg(0);
+    
+    if (std::string(header, 16).find("SQLite format 3") != std::string::npos) {
+        // SQLite format - open with sqlite3
+        sqlite3* rpmDb = nullptr;
+        if (sqlite3_open_v2(rpmDbPath.c_str(), &rpmDb, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
+            // Query package information
+            const char* sql = "SELECT name, version, release, arch FROM Packages";
+            sqlite3_stmt* stmt;
+            
+            if (sqlite3_prepare_v2(rpmDb, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+                while (sqlite3_step(stmt) == SQLITE_ROW) {
+                    PackageInfo pkg;
+                    pkg.packageManager = "rpm";
+                    
+                    const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                    const char* version = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+                    const char* release = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+                    const char* arch = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+                    
+                    pkg.name = name ? name : "";
+                    pkg.version = version ? version : "";
+                    if (release) {
+                        pkg.version += "-" + std::string(release);
+                    }
+                    pkg.architecture = arch ? arch : "";
+                    pkg.status = "installed";
+                    
+                    packages.push_back(pkg);
+                }
+                sqlite3_finalize(stmt);
+            }
+            sqlite3_close(rpmDb);
+        }
+    } else {
+        // Try to read as plain text (output from rpm -qa)
+        // Format: name-version-release.arch
+        file.close();
+        std::ifstream textFile(rpmDbPath);
+        std::string line;
+        
+        while (std::getline(textFile, line)) {
+            if (line.empty()) continue;
+            
+            PackageInfo pkg;
+            pkg.packageManager = "rpm";
+            pkg.status = "installed";
+            
+            // Parse RPM NEVRA format: name-epoch:version-release.arch
+            // Simpler format: name-version-release.arch
+            
+            size_t archPos = line.rfind('.');
+            if (archPos != std::string::npos) {
+                pkg.architecture = line.substr(archPos + 1);
+                line = line.substr(0, archPos);
+            }
+            
+            size_t releasePos = line.rfind('-');
+            if (releasePos != std::string::npos) {
+                std::string release = line.substr(releasePos + 1);
+                line = line.substr(0, releasePos);
+                
+                size_t versionPos = line.rfind('-');
+                if (versionPos != std::string::npos) {
+                    std::string version = line.substr(versionPos + 1);
+                    pkg.name = line.substr(0, versionPos);
+                    pkg.version = version + "-" + release;
+                } else {
+                    pkg.name = line;
+                    pkg.version = release;
+                }
+            } else {
+                pkg.name = line;
+            }
+            
+            if (!pkg.name.empty()) {
+                packages.push_back(pkg);
+            }
+        }
+    }
+    
+    return packages;
+}
+
+void LinuxFilesAnalyzer::analyzeRpmPackages() {
+    std::cout << "Analyzing RPM packages..." << std::endl;
+    
+    // Try modern SQLite-based RPM database first
+    auto rpmSqliteDb = queryFilesByPattern("%/var/lib/rpm/rpmdb.sqlite");
+    for (const auto& file : rpmSqliteDb) {
+        std::string extractPath = getExtractPath("rpm/rpmdb.sqlite");
+        if (extractFileToPath(file.inode, extractPath)) {
+            auto packages = parseRpmDatabase(extractPath);
+            linuxDb_->insertPackageInfos(packages);
+            AuditLog::instance().log("SYSTEM", "LINUX_RPM_PACKAGES_PARSED", 
+                                      "Parsed " + std::to_string(packages.size()) + " RPM packages from SQLite DB");
+            return; // Found and parsed
+        }
+    }
+    
+    // Try legacy BerkeleyDB format
+    // Note: For proper BerkeleyDB parsing, we'd need libdb, but we can try 
+    // to extract package names from the raw database file
+    auto rpmLegacyDb = queryFilesByPattern("%/var/lib/rpm/Packages");
+    for (const auto& file : rpmLegacyDb) {
+        std::string extractPath = getExtractPath("rpm/Packages");
+        if (extractFileToPath(file.inode, extractPath)) {
+            // BerkeleyDB is complex; log that we found it but can't fully parse
+            AuditLog::instance().log("SYSTEM", "LINUX_RPM_DATABASE_FOUND", 
+                                      "Found legacy BerkeleyDB RPM database at " + file.path);
+            // In a full implementation, we'd use libdb to read this
+        }
+    }
+}
+

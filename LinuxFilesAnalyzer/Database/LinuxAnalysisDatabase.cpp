@@ -2,15 +2,20 @@
 // Implementation of LinuxAnalysisDatabase
 
 #include "LinuxAnalysisDatabase.h"
+#include "LinuxQueryBuilder.h"
 #include "../../DatabaseManager/SQL/linux_analysis_sql.h"
 #include <iostream>
 #include <sstream>
+#include <mutex>
+
+using namespace LinuxAnalysis;
 
 LinuxAnalysisDatabase::LinuxAnalysisDatabase(const std::string& dbPath)
-    : dbPath_(dbPath), db_(nullptr) {
+    : dbPath_(dbPath), db_(nullptr), lastError_() {
 }
 
 LinuxAnalysisDatabase::~LinuxAnalysisDatabase() {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (db_) {
         sqlite3_close(db_);
         db_ = nullptr;
@@ -18,8 +23,12 @@ LinuxAnalysisDatabase::~LinuxAnalysisDatabase() {
 }
 
 bool LinuxAnalysisDatabase::initialize() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    
     int rc = sqlite3_open(dbPath_.c_str(), &db_);
     if (rc != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_OPEN_FAILED, sqlite3_errmsg(db_));
         std::cerr << "Cannot open database: " << sqlite3_errmsg(db_) << std::endl;
         return false;
     }
@@ -30,43 +39,66 @@ bool LinuxAnalysisDatabase::createTables() {
     using namespace LinuxAnalysisSQL;
     
     // Execute all create statements
-    return executeSQL(CREATE_LOG_ENTRIES_TABLE) &&
-           executeSQL(CREATE_USERS_TABLE) &&
-           executeSQL(CREATE_GROUPS_TABLE) &&
-           executeSQL(CREATE_LOGIN_RECORDS_TABLE) &&
-           executeSQL(CREATE_SHELL_HISTORY_TABLE) &&
-           executeSQL(CREATE_CRON_JOBS_TABLE) &&
-           executeSQL(CREATE_SSH_KEYS_TABLE) &&
-           executeSQL(CREATE_SSH_KNOWN_HOSTS_TABLE) &&
-           executeSQL(CREATE_PACKAGES_TABLE) &&
-           executeSQL(CREATE_NETWORK_CONNECTIONS_TABLE) &&
-           executeSQL(CREATE_SYSTEMD_SERVICES_TABLE) &&
-           executeSQL(CREATE_KERNEL_MODULES_TABLE) &&
-           executeSQL(CREATE_FIREWALL_RULES_TABLE) &&
-           executeSQL(CREATE_AUDIT_LOGS_TABLE) &&
-           executeSQL(CREATE_BROWSER_PROFILES_TABLE);
+    if (!executeSQL(CREATE_LOG_ENTRIES_TABLE) ||
+        !executeSQL(CREATE_USERS_TABLE) ||
+        !executeSQL(CREATE_GROUPS_TABLE) ||
+        !executeSQL(CREATE_LOGIN_RECORDS_TABLE) ||
+        !executeSQL(CREATE_SHELL_HISTORY_TABLE) ||
+        !executeSQL(CREATE_CRON_JOBS_TABLE) ||
+        !executeSQL(CREATE_SSH_KEYS_TABLE) ||
+        !executeSQL(CREATE_SSH_KNOWN_HOSTS_TABLE) ||
+        !executeSQL(CREATE_PACKAGES_TABLE) ||
+        !executeSQL(CREATE_NETWORK_CONNECTIONS_TABLE) ||
+        !executeSQL(CREATE_SYSTEMD_SERVICES_TABLE) ||
+        !executeSQL(CREATE_KERNEL_MODULES_TABLE) ||
+        !executeSQL(CREATE_FIREWALL_RULES_TABLE) ||
+        !executeSQL(CREATE_AUDIT_LOGS_TABLE) ||
+        !executeSQL(CREATE_BROWSER_PROFILES_TABLE)) {
+        setError(ErrorCode::DATABASE_CREATE_TABLE_FAILED);
+        return false;
+    }
+    return true;
 }
 
 bool LinuxAnalysisDatabase::executeSQL(const std::string& sql) {
     char* errMsg = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg);
     if (rc != SQLITE_OK) {
-        std::cerr << "SQL error: " << errMsg << std::endl;
+        std::string errorStr = errMsg ? errMsg : "Unknown SQL error";
+        std::cerr << "SQL error: " << errorStr << std::endl;
         sqlite3_free(errMsg);
+        setError(ErrorCode::DATABASE_EXECUTE_FAILED, errorStr);
         return false;
     }
     return true;
 }
 
+// Error handling helpers
+void LinuxAnalysisDatabase::setError(ErrorCode code, const std::string& details) {
+    lastError_ = LinuxAnalyzerError(code, details);
+}
+
+void LinuxAnalysisDatabase::setError(const LinuxAnalyzerError& error) {
+    lastError_ = error;
+}
+
+LinuxAnalyzerError LinuxAnalysisDatabase::getSQLiteError(ErrorCode code) const {
+    const char* errMsg = sqlite3_errmsg(db_);
+    return LinuxAnalyzerError(code, errMsg ? errMsg : "Unknown SQLite error");
+}
+
 bool LinuxAnalysisDatabase::beginTransaction() {
+    std::lock_guard<std::mutex> lock(mutex_);
     return executeSQL("BEGIN TRANSACTION");
 }
 
 bool LinuxAnalysisDatabase::commitTransaction() {
+    std::lock_guard<std::mutex> lock(mutex_);
     return executeSQL("COMMIT");
 }
 
 bool LinuxAnalysisDatabase::rollbackTransaction() {
+    std::lock_guard<std::mutex> lock(mutex_);
     return executeSQL("ROLLBACK");
 }
 
@@ -980,6 +1012,573 @@ std::vector<LinuxBrowserProfile> LinuxAnalysisDatabase::queryBrowserProfiles(con
     
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return profiles;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxBrowserProfile profile;
+        profile.browserType = static_cast<LinuxBrowserType>(sqlite3_column_int(stmt, 0));
+        profile.browserName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        profile.profileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        profile.profilePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        profile.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        profiles.push_back(profile);
+    }
+    
+    sqlite3_finalize(stmt);
+    return profiles;
+}
+
+// ============================================================================
+// Safe Query Methods (using QueryBuilder for SQL injection protection)
+// ============================================================================
+
+std::vector<LinuxLogEntry> LinuxAnalysisDatabase::queryLogEntriesSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<LinuxLogEntry> entries;
+    
+    std::string sql = "SELECT log_file, timestamp, unix_timestamp, hostname, process, pid, message, level, facility FROM linux_log_entries";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return entries;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return entries;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxLogEntry entry;
+        entry.logFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        entry.timestamp = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        entry.unixTimestamp = sqlite3_column_int64(stmt, 2);
+        entry.hostname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        entry.process = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        entry.pid = sqlite3_column_int(stmt, 5);
+        entry.message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        entry.level = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        entry.facility = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        entries.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    return entries;
+}
+
+std::vector<LinuxUserInfo> LinuxAnalysisDatabase::queryUserAccountsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<LinuxUserInfo> users;
+    
+    std::string sql = "SELECT username, uid, gid, full_name, home_directory, shell, password_hash, "
+                      "last_password_change, password_max_age, password_min_age, password_warn_days, "
+                      "inactive_days, account_expires, is_locked, is_system_account FROM linux_users";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return users;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return users;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxUserInfo user;
+        user.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        user.uid = sqlite3_column_int(stmt, 1);
+        user.gid = sqlite3_column_int(stmt, 2);
+        user.fullName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        user.homeDirectory = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        user.shell = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        user.passwordHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        user.lastPasswordChange = sqlite3_column_int64(stmt, 7);
+        user.passwordMaxAge = sqlite3_column_int(stmt, 8);
+        user.passwordMinAge = sqlite3_column_int(stmt, 9);
+        user.passwordWarnDays = sqlite3_column_int(stmt, 10);
+        user.inactiveDays = sqlite3_column_int(stmt, 11);
+        user.accountExpires = sqlite3_column_int64(stmt, 12);
+        user.isLocked = sqlite3_column_int(stmt, 13) != 0;
+        user.isSystemAccount = sqlite3_column_int(stmt, 14) != 0;
+        users.push_back(user);
+    }
+    
+    sqlite3_finalize(stmt);
+    return users;
+}
+
+std::vector<LinuxGroupInfo> LinuxAnalysisDatabase::queryGroupsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<LinuxGroupInfo> groups;
+    
+    std::string sql = "SELECT group_name, gid, members FROM linux_groups";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return groups;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return groups;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxGroupInfo group;
+        group.groupName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        group.gid = sqlite3_column_int(stmt, 1);
+        std::string membersStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        std::istringstream ss(membersStr);
+        std::string member;
+        while (std::getline(ss, member, ',')) {
+            if (!member.empty()) group.members.push_back(member);
+        }
+        groups.push_back(group);
+    }
+    
+    sqlite3_finalize(stmt);
+    return groups;
+}
+
+std::vector<LinuxLoginRecord> LinuxAnalysisDatabase::queryLoginRecordsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<LinuxLoginRecord> records;
+    
+    std::string sql = "SELECT username, terminal, remote_host, login_time, logout_time, login_type, is_success, pid FROM linux_login_records";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return records;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return records;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxLoginRecord record;
+        record.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        record.terminal = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        record.remoteHost = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        record.loginTime = sqlite3_column_int64(stmt, 3);
+        record.logoutTime = sqlite3_column_int64(stmt, 4);
+        record.loginType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        record.isSuccess = sqlite3_column_int(stmt, 6) != 0;
+        record.pid = sqlite3_column_int(stmt, 7);
+        records.push_back(record);
+    }
+    
+    sqlite3_finalize(stmt);
+    return records;
+}
+
+std::vector<ShellHistoryEntry> LinuxAnalysisDatabase::queryShellHistorySafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<ShellHistoryEntry> entries;
+    
+    std::string sql = "SELECT username, shell_type, command, timestamp, line_number, history_file FROM linux_shell_history";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return entries;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return entries;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ShellHistoryEntry entry;
+        entry.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        entry.shellType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        entry.command = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        entry.timestamp = sqlite3_column_int64(stmt, 3);
+        entry.lineNumber = sqlite3_column_int(stmt, 4);
+        entry.historyFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        entries.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    return entries;
+}
+
+std::vector<CronJobEntry> LinuxAnalysisDatabase::queryCronJobsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<CronJobEntry> jobs;
+    
+    std::string sql = "SELECT username, minute, hour, day_of_month, month, day_of_week, command, cron_file, cron_type FROM linux_cron_jobs";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return jobs;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return jobs;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        CronJobEntry job;
+        job.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        job.minute = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        job.hour = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        job.dayOfMonth = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        job.month = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        job.dayOfWeek = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        job.command = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        job.cronFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        job.cronType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        jobs.push_back(job);
+    }
+    
+    sqlite3_finalize(stmt);
+    return jobs;
+}
+
+std::vector<SSHKeyInfo> LinuxAnalysisDatabase::querySSHKeysSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<SSHKeyInfo> keys;
+    
+    std::string sql = "SELECT username, key_type, public_key, key_path, comment, options FROM linux_ssh_keys";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return keys;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return keys;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SSHKeyInfo key;
+        key.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        key.keyType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        key.publicKey = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        key.keyPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        key.comment = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        key.options = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        keys.push_back(key);
+    }
+    
+    sqlite3_finalize(stmt);
+    return keys;
+}
+
+std::vector<SSHKnownHost> LinuxAnalysisDatabase::querySSHKnownHostsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<SSHKnownHost> hosts;
+    
+    std::string sql = "SELECT username, hostname, key_type, public_key, is_hashed FROM linux_ssh_known_hosts";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return hosts;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return hosts;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SSHKnownHost host;
+        host.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        host.hostname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        host.keyType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        host.publicKey = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        host.isHashed = sqlite3_column_int(stmt, 4) != 0;
+        hosts.push_back(host);
+    }
+    
+    sqlite3_finalize(stmt);
+    return hosts;
+}
+
+std::vector<PackageInfo> LinuxAnalysisDatabase::queryPackagesSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<PackageInfo> packages;
+    
+    std::string sql = "SELECT name, version, architecture, install_time, package_manager, status, description, maintainer FROM linux_packages";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return packages;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return packages;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        PackageInfo pkg;
+        pkg.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        pkg.version = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        pkg.architecture = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        pkg.installTime = sqlite3_column_int64(stmt, 3);
+        pkg.packageManager = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        pkg.status = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        pkg.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        pkg.maintainer = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        packages.push_back(pkg);
+    }
+    
+    sqlite3_finalize(stmt);
+    return packages;
+}
+
+std::vector<NetworkConnection> LinuxAnalysisDatabase::queryNetworkConnectionsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<NetworkConnection> conns;
+    
+    std::string sql = "SELECT protocol, local_address, local_port, remote_address, remote_port, state, uid, inode, process, pid FROM linux_network_connections";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return conns;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return conns;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        NetworkConnection conn;
+        conn.protocol = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        conn.localAddress = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        conn.localPort = sqlite3_column_int(stmt, 2);
+        conn.remoteAddress = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        conn.remotePort = sqlite3_column_int(stmt, 4);
+        conn.state = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        conn.uid = sqlite3_column_int(stmt, 6);
+        conn.inode = sqlite3_column_int(stmt, 7);
+        conn.process = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        conn.pid = sqlite3_column_int(stmt, 9);
+        conns.push_back(conn);
+    }
+    
+    sqlite3_finalize(stmt);
+    return conns;
+}
+
+std::vector<SystemdServiceInfo> LinuxAnalysisDatabase::querySystemdServicesSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<SystemdServiceInfo> services;
+    
+    std::string sql = "SELECT service_name, description, load_state, active_state, sub_state, unit_file, exec_start, user, is_enabled FROM linux_systemd_services";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return services;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return services;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SystemdServiceInfo service;
+        service.serviceName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        service.description = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        service.loadState = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        service.activeState = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        service.subState = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        service.unitFile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        service.execStart = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        service.user = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        service.isEnabled = sqlite3_column_int(stmt, 8) != 0;
+        services.push_back(service);
+    }
+    
+    sqlite3_finalize(stmt);
+    return services;
+}
+
+std::vector<KernelModuleInfo> LinuxAnalysisDatabase::queryKernelModulesSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<KernelModuleInfo> modules;
+    
+    std::string sql = "SELECT module_name, size, used_count, used_by, state, filename FROM linux_kernel_modules";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return modules;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return modules;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        KernelModuleInfo module;
+        module.moduleName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        module.size = sqlite3_column_int64(stmt, 1);
+        module.usedCount = sqlite3_column_int(stmt, 2);
+        std::string usedByStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        std::istringstream ss(usedByStr);
+        std::string mod;
+        while (std::getline(ss, mod, ',')) {
+            if (!mod.empty()) module.usedBy.push_back(mod);
+        }
+        module.state = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        module.filename = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        modules.push_back(module);
+    }
+    
+    sqlite3_finalize(stmt);
+    return modules;
+}
+
+std::vector<FirewallRule> LinuxAnalysisDatabase::queryFirewallRulesSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<FirewallRule> rules;
+    
+    std::string sql = "SELECT chain, table_name, protocol, source, destination, source_port, destination_port, action, rule_spec FROM linux_firewall_rules";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return rules;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return rules;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        FirewallRule rule;
+        rule.chain = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0) ?: (const unsigned char*)"");
+        rule.table = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1) ?: (const unsigned char*)"");
+        rule.protocol = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        rule.source = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        rule.destination = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        rule.sourcePort = sqlite3_column_int(stmt, 5);
+        rule.destinationPort = sqlite3_column_int(stmt, 6);
+        rule.action = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        rule.ruleSpec = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8) ?: (const unsigned char*)"");
+        rules.push_back(rule);
+    }
+    
+    sqlite3_finalize(stmt);
+    return rules;
+}
+
+std::vector<LinuxAuditLogEntry> LinuxAnalysisDatabase::queryAuditLogsSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<LinuxAuditLogEntry> entries;
+    
+    std::string sql = "SELECT timestamp, serial_number, type, message, subject, object, action, result FROM linux_audit_logs";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return entries;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
+        return entries;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        LinuxAuditLogEntry entry;
+        entry.timestamp = sqlite3_column_int64(stmt, 0);
+        entry.serialNumber = sqlite3_column_int(stmt, 1);
+        entry.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2) ?: (const unsigned char*)"");
+        entry.message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3) ?: (const unsigned char*)"");
+        entry.subject = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4) ?: (const unsigned char*)"");
+        entry.object = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5) ?: (const unsigned char*)"");
+        entry.action = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6) ?: (const unsigned char*)"");
+        entry.result = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7) ?: (const unsigned char*)"");
+        entries.push_back(entry);
+    }
+    
+    sqlite3_finalize(stmt);
+    return entries;
+}
+
+std::vector<LinuxBrowserProfile> LinuxAnalysisDatabase::queryBrowserProfilesSafe(const QueryBuilder& qb) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clearError();
+    std::vector<LinuxBrowserProfile> profiles;
+    
+    std::string sql = "SELECT browser_type, browser_name, profile_name, profile_path, username FROM linux_browser_profiles";
+    sql += qb.buildFullClause();
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(ErrorCode::DATABASE_PREPARE_FAILED, sqlite3_errmsg(db_));
+        return profiles;
+    }
+    
+    if (!qb.bindParameters(stmt)) {
+        setError(ErrorCode::DATABASE_BIND_FAILED);
+        sqlite3_finalize(stmt);
         return profiles;
     }
     

@@ -22,8 +22,9 @@ XapianIndexer::XapianIndexer(const std::string& dbPath) : dbPath_(dbPath) {
     try {
         // Create or open database for writing
         db_ = std::make_unique<Xapian::WritableDatabase>(dbPath, Xapian::DB_CREATE_OR_OPEN);
+        termGenerator_.set_database(*db_);  // Required for spell correction features
         termGenerator_.set_stemmer(Xapian::Stem(stemmerLanguage_));
-        // Enable position information for phrase searching and snippets
+        // Note: FLAG_SPELLING requires set_database() to be called first
         termGenerator_.set_flags(Xapian::TermGenerator::FLAG_SPELLING);
     } catch (const Xapian::Error& e) {
         std::cerr << "Xapian Indexer Error: " << e.get_msg() << std::endl;

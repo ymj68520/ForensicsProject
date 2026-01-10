@@ -169,3 +169,7 @@ endif()
 
 # Installation
 install(TARGETS forensic_analyzer DESTINATION bin)
+
+# Enable testing and add tests subdirectory for GTest-based tests
+enable_testing()
+add_subdirectory(tests)

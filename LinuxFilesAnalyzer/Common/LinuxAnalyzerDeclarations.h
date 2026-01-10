@@ -74,6 +74,15 @@ public:
     std::vector<SSHKeyInfo> parseAuthorizedKeys(const std::string& keysPath,
                                                   const std::string& username);
     std::vector<PackageInfo> parseDpkgStatus(const std::string& statusPath);
+    std::vector<PackageInfo> parseRpmDatabase(const std::string& rpmDbPath);
+    
+    // RPM package manager analysis
+    void analyzeRpmPackages();
+    
+    // Distribution detection
+    std::string detectLinuxDistribution();
+    bool isRpmBasedDistro();
+    bool isDpkgBasedDistro();
 
 private:
     // File extraction helpers
