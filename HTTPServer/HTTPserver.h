@@ -170,6 +170,10 @@ namespace forensics {
         // Advanced Query Endpoint
         crow::response handle_advanced_query(const crow::request& req);
 
+        // Full-Text Search Endpoints
+        crow::response handle_fulltext_search(const crow::request& req);
+        crow::response handle_fulltext_index(const crow::request& req);
+
         // System Information and Monitoring Endpoints (from HTTPServerEnhanced)
         crow::response handle_health_check(const crow::request& req);
         crow::response handle_system_health(const crow::request& req);

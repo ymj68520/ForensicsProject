@@ -1,4 +1,6 @@
 #include "HTTPserver.h"
+#include "../FullTextSearch/FullTextSearch.h"
+#include "../FullTextSearch/TextExtractor.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -259,6 +261,15 @@ namespace forensics {
 
         CROW_ROUTE(app_, "/api/system/database-schema/<string>").methods("GET"_method)([this](const crow::request& req, const std::string& db_type) {
             return handle_system_database_schema(req, db_type);
+        });
+
+        // Full-Text Search Routes
+        CROW_ROUTE(app_, "/api/search/fulltext").methods("GET"_method)([this](const crow::request& req) {
+            return handle_fulltext_search(req);
+        });
+
+        CROW_ROUTE(app_, "/api/search/index").methods("POST"_method)([this](const crow::request& req) {
+            return handle_fulltext_index(req);
         });
 
         // Utility Routes
@@ -2052,5 +2063,160 @@ namespace forensics {
         return res;
     }
 
+
+    // Full-Text Search Implementation
+    crow::response HTTPServer::handle_fulltext_search(const crow::request& req) {
+        crow::response res;
+
+        auto params = crow::query_string(req.url_params);
+        std::string query = params.get("q") ? params.get("q") : "";
+        std::string index_path = params.get("index") ? params.get("index") : "search_index_xapian";
+        std::string limit_str = params.get("limit") ? params.get("limit") : "10";
+        std::string offset_str = params.get("offset") ? params.get("offset") : "0";
+
+        if (query.empty()) {
+            json error = {{"error", "Query parameter 'q' is required"}};
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        try {
+            // Check if index exists
+            if (!std::filesystem::exists(index_path)) {
+                json error = {
+                    {"error", "Search index not found"},
+                    {"index_path", index_path},
+                    {"suggestion", "Use /api/search/index to create an index first"}
+                };
+                res.code = 404;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+
+            XapianSearcher searcher(index_path);
+            if (!searcher.isValid()) {
+                json error = {{"error", "Failed to open search index"}};
+                res.code = 500;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+
+            size_t limit = std::stoi(limit_str);
+            size_t offset = std::stoi(offset_str);
+
+            auto results = searcher.search(query, limit, offset);
+
+            json response = {
+                {"query", query},
+                {"total_documents", searcher.getTotalDocuments()},
+                {"results_count", results.size()},
+                {"limit", limit},
+                {"offset", offset},
+                {"results", json::array()}
+            };
+
+            for (const auto& r : results) {
+                response["results"].push_back({
+                    {"path", r.path},
+                    {"score", r.score},
+                    {"snippet", r.snippet},
+                    {"file_size", r.fileSize},
+                    {"extension", r.extension}
+                });
+            }
+
+            res.set_header("Content-Type", "application/json");
+            res.write(response.dump());
+        } catch (const std::exception& e) {
+            json error = {{"error", e.what()}};
+            res.code = 500;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+        }
+
+        return res;
+    }
+
+    crow::response HTTPServer::handle_fulltext_index(const crow::request& req) {
+        crow::response res;
+
+        try {
+            auto body = json::parse(req.body);
+            std::string directory = body.value("directory", "");
+            std::string index_path = body.value("index_path", "search_index_xapian");
+
+            if (directory.empty()) {
+                json error = {{"error", "'directory' field is required in request body"}};
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+
+            if (!std::filesystem::exists(directory)) {
+                json error = {{"error", "Directory not found"}, {"path", directory}};
+                res.code = 404;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+
+            XapianIndexer indexer(index_path);
+            int count = 0;
+            std::vector<std::string> indexed_files;
+
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
+                if (entry.is_regular_file()) {
+                    std::string path = entry.path().string();
+                    std::string content = TextExtractor::extract(path, 100000);  // Limit 100KB per file
+
+                    if (!content.empty()) {
+                        auto meta = TextExtractor::extractMetadata(path);
+                        FileMetadata fileMeta;
+                        fileMeta.path = meta.path;
+                        fileMeta.extension = meta.extension;
+                        fileMeta.size = meta.size;
+                        fileMeta.mtime = meta.mtime;
+
+                        indexer.addDocument(path, content, fileMeta);
+                        count++;
+
+                        if (indexed_files.size() < 10) {
+                            indexed_files.push_back(path);
+                        }
+                    }
+                }
+            }
+            indexer.commit();
+
+            json response = {
+                {"status", "completed"},
+                {"indexed_files_count", count},
+                {"index_path", index_path},
+                {"source_directory", directory},
+                {"sample_files", indexed_files}
+            };
+
+            res.code = 201;
+            res.set_header("Content-Type", "application/json");
+            res.write(response.dump());
+        } catch (const json::exception& e) {
+            json error = {{"error", "Invalid JSON body"}, {"details", e.what()}};
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+        } catch (const std::exception& e) {
+            json error = {{"error", e.what()}};
+            res.code = 500;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+        }
+
+        return res;
+    }
 
 }
