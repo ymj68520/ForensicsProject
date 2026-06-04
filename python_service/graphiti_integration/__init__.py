@@ -3,7 +3,10 @@
 # This module bridges the forensics SQLite database (containing LLM-generated
 # file descriptions) with Graphiti to build a RAG knowledge graph.
 
-from .config import GraphitiConfig
+# Apply LLM response patch BEFORE any graphiti_core import.
+# Fixes qwen3/deepseek-r1 <think> tags breaking JSON parsing.
+from . import llm_patch  # noqa: F401
+
 from .database_reader import (
     ForensicsDatabase,
     FileRecord,
@@ -22,6 +25,11 @@ from .exceptions import (
     IngestionError,
 )
 
+# Lazy imports for optional dependencies
+def _get_config():
+    from .config import GraphitiConfig
+    return GraphitiConfig
+
 # Lazy import for graphiti_ingestor (requires graphiti_core which may not be installed)
 def _get_graphiti_ingestor():
     from .graphiti_ingestor import GraphitiIngestor
@@ -32,7 +40,7 @@ def _get_graphiti_pipeline():
     return GraphitiPipeline, run_pipeline, MultiSourcePipeline, run_multi_source_pipeline
 
 __all__ = [
-    # Config
+    # Config (lazy)
     "GraphitiConfig",
     # Database
     "ForensicsDatabase",
@@ -54,6 +62,11 @@ __all__ = [
     "run_pipeline",
     "MultiSourcePipeline",
     "run_multi_source_pipeline",
+    # File Entity Management
+    "FileEntityIngestor",
+    "EntityRelationBuilder",
+    # Migration
+    "MigrationManager",
     # Exceptions
     "GraphitiIntegrationError",
     "DatabaseError",
@@ -65,7 +78,9 @@ __version__ = "0.2.0"
 
 # Lazy loading support
 def __getattr__(name):
-    if name == "GraphitiIngestor":
+    if name == "GraphitiConfig":
+        return _get_config()
+    elif name == "GraphitiIngestor":
         return _get_graphiti_ingestor()
     elif name == "GraphitiPipeline":
         pipeline_mod = _get_graphiti_pipeline()
@@ -79,6 +94,15 @@ def __getattr__(name):
     elif name == "run_multi_source_pipeline":
         pipeline_mod = _get_graphiti_pipeline()
         return pipeline_mod[3]
+    elif name == "FileEntityIngestor":
+        from .file_entity_ingestor import FileEntityIngestor
+        return FileEntityIngestor
+    elif name == "EntityRelationBuilder":
+        from .entity_relation_builder import EntityRelationBuilder
+        return EntityRelationBuilder
+    elif name == "MigrationManager":
+        from .migration import MigrationManager
+        return MigrationManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

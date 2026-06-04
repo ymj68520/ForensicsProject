@@ -6,11 +6,12 @@ Uses pydantic-settings for validation and type safety.
 """
 
 import os
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +24,99 @@ def find_env_file() -> Optional[Path]:
             return env_path
         current = current.parent
     return None
+
+
+@lru_cache()
+def get_project_root() -> Path:
+    """Resolve project root: .env PROJECT_ROOT first, auto-detect fallback."""
+    settings = get_settings()
+    if settings.project_root:
+        root = Path(settings.project_root)
+        if root.is_dir():
+            return root
+    # Auto-detect: config.py -> httpserver -> python_service -> project_root
+    return Path(__file__).resolve().parents[2]
+
+
+class LLMFilterConfig(BaseModel):
+    """Configuration for LLM file filtering enhancements."""
+
+    # Parser settings
+    enable_enhanced_parser: bool = Field(
+        default=True,
+        description="Enable enhanced LLM response parser"
+    )
+    parser_fallback_enabled: bool = Field(
+        default=True,
+        description="Enable fallback to legacy parser on failure"
+    )
+
+    # Matcher settings
+    match_confidence_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence threshold for matches"
+    )
+    enable_smart_dedup: bool = Field(
+        default=True,
+        description="Enable smart duplicate file resolution"
+    )
+
+    # Scoring weights (must sum to 1.0)
+    score_weight_path_semantic: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Weight for path semantic relevance scoring"
+    )
+    score_weight_freshness: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Weight for file freshness scoring"
+    )
+    score_weight_size: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Weight for file size scoring"
+    )
+    score_weight_depth: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Weight for path depth scoring"
+    )
+
+    # Concurrent control
+    enable_concurrent_lock: bool = Field(
+        default=True,
+        description="Enable task-level concurrent filtering lock"
+    )
+    lock_timeout: int = Field(
+        default=300,
+        ge=1,
+        le=3600,
+        description="Lock acquisition timeout in seconds"
+    )
+
+    # Retry settings
+    max_parse_retries: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description="Maximum parsing retry attempts"
+    )
+    retry_delay: int = Field(
+        default=1,
+        ge=0,
+        le=10,
+        description="Base delay between retries in seconds"
+    )
+
+    class Config:
+        validate_assignment = True
 
 
 class Settings(BaseSettings):
@@ -47,7 +141,12 @@ class Settings(BaseSettings):
     cpp_backend_url: str = Field(default="http://localhost:8080", alias="CPP_BACKEND_URL")
     http_server_port: int = Field(default=8080, alias="HTTP_SERVER_PORT")
     http_server_host: str = Field(default="0.0.0.0", alias="HTTP_SERVER_HOST")
-    
+
+    # DLL Analysis Settings
+    dll_analysis_enabled: bool = Field(default=True, env="DLL_ANALYSIS_ENABLED")
+    dll_cpp_backend_url: str = Field(default="http://localhost:8080", env="DLL_CPP_BACKEND_URL")
+    dll_analysis_timeout: float = Field(default=30.0, env="DLL_ANALYSIS_TIMEOUT")
+
     # LLM Settings
     llm_base_url: str = Field(default="http://localhost:1234", alias="LLM_BASE_URL")
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
@@ -66,7 +165,13 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
-    
+
+    # OSS Settings
+    oss_access_key_id: str = Field(default="", alias="OSS_ACCESS_KEY_ID")
+    oss_access_key_secret: str = Field(default="", alias="OSS_ACCESS_KEY_SECRET")
+    oss_endpoint: str = Field(default="", alias="OSS_ENDPOINT")
+    oss_region: str = Field(default="cn-hangzhou", alias="OSS_REGION")
+
     # Neo4j / Graphiti Settings
     neo4j_uri: str = Field(default="neo4j://127.0.0.1:7687", alias="NEO4J_URI")
     neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
@@ -84,7 +189,7 @@ class Settings(BaseSettings):
     # File Analysis Settings
     file_analysis_max_content: int = Field(default=10000, alias="FILE_ANALYSIS_MAX_CONTENT")
     file_analysis_max_keywords: int = Field(default=10, alias="FILE_ANALYSIS_MAX_KEYWORDS")
-    file_analysis_max_content_limit: int = Field(default=50000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
+    file_analysis_max_content_limit: int = Field(default=12000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
     
     # Logging Settings
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
@@ -94,6 +199,50 @@ class Settings(BaseSettings):
     # Performance Settings
     thread_pool_size: int = Field(default=4, alias="THREAD_POOL_SIZE")
     max_batch_size: int = Field(default=100, alias="MAX_BATCH_SIZE")
+
+    # CORS Settings (stored as string, parsed via property)
+    cors_origins_raw: str = Field(
+        default='["*"]',
+        alias="PYTHON_CORS_ORIGINS",
+        description="List of allowed CORS origins in JSON array format. "
+                    "Example: '[\"https://example.com\", \"https://app.example.com\"]'"
+    )
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Parse and return CORS origins list."""
+        return self._parse_cors_origins(self.cors_origins_raw)
+
+    @staticmethod
+    def _parse_cors_origins(value: str) -> List[str]:
+        """Parse CORS origins from string format.
+
+        Supports JSON array format: '["https://example.com", "https://app.example.com"]'
+        Falls back to comma-separated format for convenience.
+        """
+        if not value or value.strip() == "*":
+            return ["*"]
+
+        value = value.strip()
+
+        # Try to parse as JSON first
+        if value.startswith("["):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(item) for item in parsed]
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback to comma-separated format
+        origins = [item.strip() for item in value.split(",") if item.strip()]
+        return origins if origins else ["*"]
+
+    # LLM Filter Configuration
+    llm_filter_config: LLMFilterConfig = Field(
+        default_factory=LLMFilterConfig,
+        description="LLM file filtering configuration"
+    )
     
     @property
     def cpp_backend_base_url(self) -> str:

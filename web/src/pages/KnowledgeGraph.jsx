@@ -16,6 +16,8 @@ import {
     listTaskGraphs,
     deleteTaskGraph,
     getGraphData,
+    getJobStatus,
+    reingestAnalyzedData,
 } from '../services/graphitiService';
 
 // Node color palette by label
@@ -67,6 +69,13 @@ export default function KnowledgeGraph() {
     const [ingestProgress, setIngestProgress] = useState(0);
     const [ingestMessage, setIngestMessage] = useState('');
 
+    // Re-ingestion state (separate from regular ingestion)
+    const [reingesting, setReingesting] = useState(false);
+    const [reingestJobId, setReingestJobId] = useState(null);
+    const [reingestProgress, setReingestProgress] = useState(0);
+    const [reingestMessage, setReingestMessage] = useState('');
+    const [reingestError, setReingestError] = useState(null);
+
     // Graph visualization
     const [graphData, setGraphData] = useState({ nodes: [], links: [] });
     const [graphLoading, setGraphLoading] = useState(false);
@@ -114,8 +123,60 @@ export default function KnowledgeGraph() {
         setRelationshipsPage(1);
         setGraphData({ nodes: [], links: [] });
         setSelectedNode(null);
+        setReingestError(null);
         if (taskId) fetchStatus();
     }, [taskId, fetchStatus]);
+
+    // Poll re-ingestion job status
+    useEffect(() => {
+        if (!reingestJobId) return;
+
+        let isMounted = true;
+
+        const pollStatus = async () => {
+            try {
+                const status = await getJobStatus(reingestJobId);
+                if (!isMounted) return;
+
+                setReingestProgress(status.progress || 0);
+                setReingestMessage(status.current_phase || 'Processing...');
+
+                if (status.status === 'COMPLETED') {
+                    if (!isMounted) return;
+                    setReingesting(false);
+                    setReingestMessage('重新摄入完成！');
+                    await fetchStatus();
+                    await fetchTaskGraphs();
+                    setGraphData({ nodes: [], links: [] }); // trigger reload
+                } else if (status.status === 'FAILED') {
+                    if (!isMounted) return;
+                    setReingesting(false);
+                    setReingestProgress(0);
+                    setReingestMessage('');
+                    setReingestError(`重新摄入失败: ${status.error || '未知错误'}`);
+                } else if (status.status === 'CANCELLED') {
+                    if (!isMounted) return;
+                    setReingesting(false);
+                    setReingestMessage('操作已取消');
+                }
+            } catch (err) {
+                if (!isMounted) return;
+                setReingesting(false);
+                setReingestProgress(0);
+                setReingestMessage('');
+                setReingestError('获取任务状态失败: ' + (err.message || '未知错误'));
+            }
+        };
+
+        // Poll every 2 seconds
+        const interval = setInterval(pollStatus, 2000);
+        pollStatus(); // Initial call
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [reingestJobId, fetchStatus, fetchTaskGraphs]);
 
     // ── Graph visualization ──────────────────────────────────────────────────────
     const fetchGraphData = useCallback(async () => {
@@ -270,6 +331,34 @@ export default function KnowledgeGraph() {
         }
     };
 
+    const handleReingestAnalyzed = async () => {
+        if (!taskId) {
+            setError('请先选择一个任务');
+            return;
+        }
+
+        setReingesting(true);
+        setReingestJobId(null);
+        setReingestProgress(0);
+        setReingestMessage('正在准备重新摄入...');
+
+        try {
+            const result = await reingestAnalyzedData(taskId);
+            if (result.job_id) {
+                setReingestJobId(result.job_id);
+                setReingestMessage('已提交重新摄入任务');
+            } else {
+                setReingesting(false);
+                setError('未能提交重新摄入任务');
+            }
+        } catch (err) {
+            setReingestError('提交重新摄入任务失败: ' + (err.message || '未知错误'));
+            setReingesting(false);
+            setReingestProgress(0);
+            setReingestMessage('');
+        }
+    };
+
     const handleTaskChange = (newId) => setSearchParams({ task_id: newId });
 
     useEffect(() => {
@@ -301,6 +390,57 @@ export default function KnowledgeGraph() {
         </Card>
     );
 
+    const renderManagementToolbar = () => (
+        <Card className="mb-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="font-medium text-slate-900 dark:text-white">
+                        🔧 图谱管理工具栏
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                        仅重新摄入包含AI分析结果的文件和事件簇
+                    </p>
+                </div>
+                <Button onClick={handleReingestAnalyzed} disabled={!taskId || reingesting || ingesting}>
+                    {reingesting ? <Spinner size="sm" /> : '📥 重新摄入已分析数据'}
+                </Button>
+            </div>
+            {/* Error display for re-ingestion */}
+            {reingestError && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded flex items-start justify-between">
+                    <div className="flex items-start gap-2">
+                        <span className="text-lg">❌</span>
+                        <span className="text-sm">{reingestError}</span>
+                    </div>
+                    <button
+                        onClick={() => setReingestError(null)}
+                        className="text-red-600 dark:text-red-400 hover:underline text-sm"
+                    >
+                        关闭
+                    </button>
+                </div>
+            )}
+            {/* Progress indicator for re-ingestion */}
+            {reingesting && reingestProgress > 0 && reingestProgress < 100 && (
+                <div className="mt-4">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-600 dark:text-slate-300">{reingestMessage}</span>
+                        <span className="text-purple-600">{reingestProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
+                        <div className="bg-purple-600 h-2 rounded-full transition-all"
+                             style={{ width: `${reingestProgress}%` }} />
+                    </div>
+                </div>
+            )}
+            {reingesting && reingestProgress === 100 && reingestMessage && (
+                <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-200 rounded">
+                    ✅ {reingestMessage}
+                </div>
+            )}
+        </Card>
+    );
+
     const renderStatus = () => (
         <Card className="mb-6">
             <div className="flex items-center justify-between">
@@ -325,7 +465,7 @@ export default function KnowledgeGraph() {
                         <div className="text-sm text-slate-500">关系</div>
                     </div>
                     <div className="flex gap-2">
-                        <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting}>
+                        <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting || reingesting}>
                             {ingesting ? <Spinner size="sm" /> : '导入数据'}
                         </Button>
                         {taskGraphs.includes(taskId) && (
@@ -725,6 +865,7 @@ export default function KnowledgeGraph() {
             )}
 
             {renderTaskSelector()}
+            {taskId && renderManagementToolbar()}
             {taskId && renderStatus()}
             {taskId && renderTabs()}
 

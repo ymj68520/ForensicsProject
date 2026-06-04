@@ -43,6 +43,9 @@ public:
     bool initialize();
     
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
+
+    void setWeChatPassword(const std::string& password) { wechatPassword_ = password; }
+    const std::string& getWeChatPassword() const { return wechatPassword_; }
     
     /**
      * @brief Analyze all Android data
@@ -68,6 +71,11 @@ public:
     
     // APK Analysis
     ApkSignatureInfo analyzeApk(const std::string& apkPath);
+    
+    // System Log Analysis
+    void analyzeSystemLogs();
+    std::vector<SystemLogEntry> parseSystemLogFile(const std::string& filePath, const std::string& originalPath);
+    std::string getLogTypeFromPath(const std::string& path);
 
 private:
     void scanUserData(const std::string& dataPath);
@@ -92,6 +100,12 @@ private:
     void extractAndScanSystemApps(const std::string& imageAppDir, const std::string& tempAppDir);
     void extractAndScanFramework(const std::string& imageFrameworkDir, const std::string& tempFrameworkDir);
 
+    // Enhanced WeChat parsing methods
+    std::vector<WeChatContact> parseWeChatContacts(sqlite3* db);
+    std::vector<WeChatChatroom> parseWeChatChatrooms(sqlite3* db);
+    WeChatOwnerInfo identifyWeChatOwner(sqlite3* db);
+    void parseWeChatEnhanced(const std::string& dbPath, const std::string& password);
+
     // Build.prop analysis methods
     BuildPropAnalysisResult analyzeBuildPropFile(const std::string& buildPropPath);
     void generateBuildPropReport(const BuildPropAnalysisResult& result, const std::string& outputPath);
@@ -110,4 +124,5 @@ private:
     DatabaseManager* dbManager_;
     std::unique_ptr<FileExtractor> fileExtractor_;
     std::unique_ptr<AndroidAnalysisDatabase> androidDb_;
+    std::string wechatPassword_;
 };

@@ -39,10 +39,28 @@ public:
     /**
      * @brief Main analysis entry point
      * Orchestrates the analysis of all Linux artifacts.
+     * This is a MANDATORY step that includes LLM analysis for AI insights.
      */
     void analyzeLinuxData();
 
-    // System log analysis
+    /**
+     * @brief Server/Cloud analysis entry point
+     * Focuses on server and cloud-specific artifacts: containers, web servers,
+     * cloud logs, network configuration, security posture, and extended history.
+     */
+    void analyzeServerCloudArtifacts();
+
+    /**
+     * @brief Analyze Linux artifacts with LLM for AI-powered insights
+     * This is a MANDATORY step for Linux forensics.
+     * All parsed system artifacts are analyzed by AI to provide contextual understanding.
+     */
+    void analyzeWithLLM();
+
+    // Compressed and rotated log analysis (Phase 1)
+    /** @brief Analyze compressed and rotated log files (.gz, .xz, .bz2, .zst) */
+    void analyzeCompressedLogs();
+
     // System log analysis
     /** @brief Analyze system logs (syslog, messages) */
     void analyzeSystemLogs();
@@ -52,6 +70,10 @@ public:
     void analyzeKernelLogs();
     /** @brief Analyze application specific logs */
     void analyzeApplicationLogs();
+
+    // Journal analysis (Phase 2)
+    /** @brief Analyze systemd-journald journal files */
+    void analyzeJournalLogs();
 
     // User and authentication analysis
     // User and authentication analysis
@@ -77,6 +99,72 @@ public:
 
     // Browser data analysis
     void analyzeBrowserData();
+
+    // Container analysis
+    void analyzeDockerContainers();
+    void analyzeDockerImages();
+    void analyzeDockerVolumes();
+    void analyzePodmanContainers();
+
+    // Web server analysis
+    void analyzeApacheServers();
+    void analyzeNginxServers();
+
+    // Security posture analysis
+    void analyzeSetuidFiles();
+    void analyzeCapabilities();
+    void analyzeSELinux();
+    void analyzeAppArmor();
+
+    // Enhanced analysis
+    void analyzeLogTampering();
+    void analyzePersistenceMechanisms();
+    void analyzeMiddlewareLogs();
+    void analyzeContainerRuntimeLogs();
+    void analyzePackageManagerLogs();
+    void analyzeAccountSSHSecurity();
+    void analyzeDatabaseLogs();
+    void analyzeEmailVPNLogs();
+    void analyzeFirewallSecurityLogs();
+
+    // Phase 12: USB/Mount/Desktop/Cloud
+    void analyzeUSBEvents();
+    void analyzeMountEntries();
+    void analyzeCloudLogs();
+
+    // Phase 13: Extended history
+    void analyzeExtendedHistory();
+
+    // Phase 14: Security bypass
+    void analyzeSecurityBypass();
+
+    // Phase 15: Pseudo-filesystem markers
+    void analyzePseudoFilesystems();
+
+    // Phase 16: DNS configuration
+    void analyzeDNSConfiguration();
+
+    // Phase 17: CUPS logs
+    void analyzeCUPSLogs();
+
+    // Phase 18: systemd-coredump
+    void analyzeCoredumps();
+
+    // Phase 19: Snap/Flatpak packages
+    void analyzeSnapFlatpak();
+
+    // Phase 20: Browser detailed data
+    void analyzeBrowserDetailedData();
+
+    // Phase 21: XDG desktop artifacts
+    void analyzeXDGArtifacts();
+
+    // Phase 16: Rule engine
+    void analyzeWithRuleEngine();
+
+    void correlateEvents();
+    void reconstructTimeline();
+    void detectAnomalies();
 
     // Individual parsers (public for testing)
     std::vector<LinuxLogEntry> parseLogFile(const std::string& logPath, 

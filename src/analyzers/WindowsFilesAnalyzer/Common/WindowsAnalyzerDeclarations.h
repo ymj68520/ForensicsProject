@@ -41,8 +41,16 @@ public:
     /**
      * @brief Main analysis entry point
      * Orchestrates the analysis of all Windows artifacts.
+     * This is a MANDATORY step that includes LLM analysis for AI insights.
      */
     void analyzeWindowsData();
+
+    /**
+     * @brief Analyze Windows artifacts with LLM for AI-powered insights
+     * This is a MANDATORY step for Windows forensics.
+     * All parsed system artifacts are analyzed by AI to provide contextual understanding.
+     */
+    void analyzeWithLLM();
 
     // Windows system file analysis
     // Windows system file analysis
@@ -93,6 +101,10 @@ private:
     std::vector<WindowsUserInfo> parseUserAccountsFromSAM(const std::string& samPath);
     std::vector<USBDeviceInfo> parseUSBDevicesFromRegistry(const std::string& systemPath);
     std::vector<WindowsServiceInfo> parseServicesFromRegistry(const std::string& systemPath);
+    std::vector<WiFiProfileInfo> parseWiFiProfilesFromRegistry(const std::string& softwarePath);
+    std::vector<RDPConnectionInfo> parseRDPConnectionsFromRegistry(const std::string& ntuserPath);
+    std::vector<ShimcacheEntryInfo> parseShimcacheFromRegistry(const std::string& systemPath);
+    std::vector<UserAssistEntryInfo> parseUserAssistFromRegistry(const std::string& ntuserPath);
 
     // Event Log parsing helpers
     std::pair<std::vector<EventLogEntry>, int> parseEventLogWithRecovery(const std::string& logPath);

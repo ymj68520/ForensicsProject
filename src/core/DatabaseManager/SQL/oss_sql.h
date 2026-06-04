@@ -29,6 +29,12 @@ constexpr const char* CREATE_OBJECTS_TABLE = R"(
         is_deleted INTEGER DEFAULT 0,
         md5_hash TEXT,
         analyzed_at INTEGER,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT,
+        llm_is_relevant INTEGER DEFAULT 1,
         UNIQUE(bucket, key, version_id)
     );
 )";
@@ -156,6 +162,42 @@ constexpr const char* SELECT_ACCESS_LOGS_BY_OBJECT = R"(
 
 constexpr const char* SELECT_ALL_BUCKETS = R"(
     SELECT * FROM oss_buckets ORDER BY name;
+)";
+
+// ============================================================================
+// LLM分析查询语句
+// ============================================================================
+
+constexpr const char* UPDATE_OSS_OBJECT_LLM_ANALYSIS = R"(
+    UPDATE oss_objects SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?,
+        llm_is_relevant = ?
+    WHERE id = ?
+)";
+
+constexpr const char* SELECT_OSS_OBJECTS_FOR_FILTERING = R"(
+    SELECT id, bucket, key, size, last_modified, content_type, storage_class
+    FROM oss_objects
+    WHERE llm_analyzed_at IS NULL
+    ORDER BY last_modified DESC
+    LIMIT ?
+)";
+
+constexpr const char* SELECT_OSS_OBJECTS_BY_IDS = R"(
+    SELECT id, bucket, key, size, content_type, storage_class
+    FROM oss_objects
+    WHERE id IN ({})
+    ORDER BY last_modified DESC
+)";
+
+constexpr const char* SELECT_OSS_ANALYZED_OBJECTS = R"(
+    SELECT * FROM oss_objects
+    WHERE llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0
+    ORDER BY llm_analyzed_at DESC
 )";
 
 // ============================================================================

@@ -21,6 +21,7 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from .config import Settings, get_settings
 
@@ -52,6 +53,9 @@ async def lifespan(app: FastAPI):
         from .services import get_service_manager
         service_manager = get_service_manager()
         await service_manager.initialize()
+        # Initialize dependency injection system
+        from .dependencies import init_dependencies
+        init_dependencies(service_manager)
     except Exception as e:
         logger.warning(f"Some services failed to initialize: {e}")
     
@@ -110,7 +114,7 @@ with the C++ backend for task management and file system operations.
     # Configure CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -158,6 +162,23 @@ with the C++ backend for task management and file system operations.
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
         )
+
+    # Add validation error handler for detailed logging
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Handle Pydantic validation errors with detailed logging."""
+        logger.error(f"[VALIDATION_ERROR] Path: {request.url.path}")
+        logger.error(f"[VALIDATION_ERROR] Body: {await request.body()}")
+        logger.error(f"[VALIDATION_ERROR] Errors: {exc.errors()}")
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "message": "Validation error",
+                "errors": exc.errors(),
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
     
     # Register routes
     _register_routes(app)
@@ -168,7 +189,7 @@ with the C++ backend for task management and file system operations.
 
 def _register_routes(app: FastAPI):
     """Register all route modules."""
-    from .routes import health, graphiti, llm, database, office, case_analysis, system
+    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph
 
     # Health routes (no prefix)
     app.include_router(health.router, tags=["Health"])
@@ -177,9 +198,15 @@ def _register_routes(app: FastAPI):
     app.include_router(graphiti.router, prefix="/api/graphiti", tags=["Graphiti"])
     app.include_router(llm.router, prefix="/api/llm", tags=["LLM"])
     app.include_router(case_analysis.router, prefix="/api/llm", tags=["Case Analysis"])
+    app.include_router(multi_analysis.router, tags=["Multi-Image Analysis"])
+    app.include_router(associations.router, prefix="/api/associations", tags=["Associations"])
     app.include_router(database.router, prefix="/api/db", tags=["Database"])
     app.include_router(office.router, prefix="/api/office", tags=["Office"])
+    app.include_router(oss_analysis.router, tags=["OSS Analysis"])
     app.include_router(system.router, prefix="/api/system", tags=["System"])
+    app.include_router(dll.router, prefix="/api/llm", tags=["DLL"])
+    app.include_router(markitdown.router, prefix="/api/markitdown", tags=["Markitdown"])
+    app.include_router(wechat_graph.router, prefix="/api/wechat", tags=["WeChat Analysis"])
 
 
 def get_app() -> FastAPI:

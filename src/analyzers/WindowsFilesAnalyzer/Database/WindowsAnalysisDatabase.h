@@ -21,16 +21,16 @@ public:
     // Registry value operations
     bool insertRegistryValue(const RegistryValue& value);
     bool insertRegistryValues(const std::vector<RegistryValue>& values);
-    std::vector<RegistryValue> queryRegistryValues(const std::string& whereClause = "");
+    std::vector<RegistryValue> queryRegistryValues(const std::string& whereClause = "") const;
 
     // Event log operations
     bool insertEventLogEntry(const EventLogEntry& entry);
     bool insertEventLogEntries(const std::vector<EventLogEntry>& entries);
-    std::vector<EventLogEntry> queryEventLogs(const std::string& whereClause = "");
+    std::vector<EventLogEntry> queryEventLogs(const std::string& whereClause = "") const;
 
     // Prefetch file operations
     bool insertPrefetchInfo(const PrefetchInfo& info);
-    std::vector<PrefetchInfo> queryPrefetchFiles(const std::string& whereClause = "");
+    std::vector<PrefetchInfo> queryPrefetchFiles(const std::string& whereClause = "") const;
 
     // LNK file operations
     bool insertLnkFileInfo(const LnkFileInfo& info);
@@ -100,6 +100,22 @@ public:
     // SRUM entry operations
     bool insertSrumEntry(const SrumEntry& entry);
     std::vector<SrumEntry> querySrumEntries(const std::string& whereClause = "");
+
+    // WiFi profile operations
+    bool insertWiFiProfile(const WiFiProfileInfo& profile);
+    std::vector<WiFiProfileInfo> queryWiFiProfiles(const std::string& whereClause = "");
+
+    // RDP connection operations
+    bool insertRDPConnection(const RDPConnectionInfo& conn);
+    std::vector<RDPConnectionInfo> queryRDPConnections(const std::string& whereClause = "");
+
+    // Shimcache entry operations
+    bool insertShimcacheEntry(const ShimcacheEntryInfo& entry);
+    std::vector<ShimcacheEntryInfo> queryShimcacheEntries(const std::string& whereClause = "");
+
+    // UserAssist entry operations
+    bool insertUserAssistEntry(const UserAssistEntryInfo& entry);
+    std::vector<UserAssistEntryInfo> queryUserAssistEntries(const std::string& whereClause = "");
 
     // Transaction management
     bool beginTransaction();

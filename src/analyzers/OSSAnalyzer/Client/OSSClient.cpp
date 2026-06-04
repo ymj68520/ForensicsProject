@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -48,9 +49,20 @@ static int64_t parseOssDateTime(const std::string& dt) {
 class OSSClient::Impl {
 public:
     std::unique_ptr<AlibabaCloud::OSS::OssClient> client;
-    
+
     Impl() = default;
     ~Impl() = default;
+
+    /**
+     * @brief 下载对象到本地文件
+     */
+    bool downloadObject(
+        AlibabaCloud::OSS::OssClient* client,
+        const std::string& bucketName,
+        const std::string& objectKey,
+        const std::string& localPath,
+        ProgressCallback progressCallback
+    );
 };
 
 OSSClient::OSSClient() : impl_(std::make_unique<Impl>()) {
@@ -374,35 +386,20 @@ bool OSSClient::downloadObject(
         setError("Client not initialized");
         return false;
     }
-    
-    try {
-        GetObjectRequest request(bucketName, objectKey);
-        request.setResponseStreamFactory([&localPath]() {
-            return std::make_shared<std::fstream>(localPath, 
-                std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-        });
-        
-        if (progressCallback) {
-            AlibabaCloud::OSS::TransferProgress tp;
-            tp.Handler = [&progressCallback](size_t /*increment*/, int64_t transferred, int64_t total, void* /*userData*/) {
-                progressCallback(transferred, total);
-            };
-            request.setTransferProgress(tp);
-        }
-        
-        auto outcome = impl_->client->GetObject(request);
-        
-        if (!outcome.isSuccess()) {
-            setError("Failed to download object: " + outcome.error().Message());
-            return false;
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        setError("Failed to download object: " + std::string(e.what()));
-        return false;
+
+    bool result = impl_->downloadObject(
+        impl_->client.get(),
+        bucketName,
+        objectKey,
+        localPath,
+        progressCallback
+    );
+
+    if (!result) {
+        setError("Failed to download object: " + bucketName + "/" + objectKey);
     }
+
+    return result;
 }
 
 bool OSSClient::getObjectContent(
@@ -475,6 +472,68 @@ std::vector<OSSObjectInfo> OSSClient::listAccessLogFiles(
     // 简单实现：仅按前缀列出文件
     // 实际可以根据时间戳筛选
     return listObjects(loggingBucket, loggingPrefix, "", 1000);
+}
+
+bool OSSClient::Impl::downloadObject(
+    AlibabaCloud::OSS::OssClient* client,
+    const std::string& bucketName,
+    const std::string& objectKey,
+    const std::string& localPath,
+    ProgressCallback progressCallback
+) {
+    // Null pointer check
+    if (client == nullptr) {
+        LOG_ERROR("OSS client is null in downloadObject");
+        return false;
+    }
+
+    try {
+        // 创建父目录（如果不存在）- 使用安全的 std::filesystem 方法
+        size_t lastSlash = localPath.find_last_of('/');
+        if (lastSlash != std::string::npos) {
+            std::string dirPath = localPath.substr(0, lastSlash);
+            try {
+                std::filesystem::create_directories(dirPath);
+            } catch (const std::filesystem::filesystem_error& e) {
+                // 目录创建失败，但文件操作可能仍然成功（例如目录已存在）
+                // 记录警告但继续执行
+                LOG_WARNING("Failed to create directory " + dirPath + ": " + e.what() +
+                           ", continuing with download attempt");
+            }
+        }
+
+        // 创建GetObjectRequest
+        AlibabaCloud::OSS::GetObjectRequest request(bucketName, objectKey);
+        request.setResponseStreamFactory([localPath]() {
+            return std::make_shared<std::fstream>(localPath,
+                std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+        });
+
+        // 设置进度回调
+        if (progressCallback) {
+            AlibabaCloud::OSS::TransferProgress tp;
+            tp.Handler = [progressCallback](size_t /*increment*/, int64_t transferred, int64_t total, void* /*userData*/) {
+                progressCallback(transferred, total);
+            };
+            request.setTransferProgress(tp);
+        }
+
+        // 执行下载
+        auto outcome = client->GetObject(request);
+
+        if (!outcome.isSuccess()) {
+            LOG_ERROR("Failed to download object " + bucketName + "/" + objectKey +
+                     ": " + outcome.error().Message());
+            return false;
+        }
+
+        return true;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR("Exception in downloadObject for " + bucketName + "/" + objectKey +
+                 ": " + std::string(e.what()));
+        return false;
+    }
 }
 
 void OSSClient::setError(const std::string& error) {

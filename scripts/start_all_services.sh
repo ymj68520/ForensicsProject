@@ -108,6 +108,30 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ========================================================================
+# Pre-startup: Kill any existing services
+# ========================================================================
+echo -e "\n${YELLOW}➤ Checking for existing services...${NC}"
+echo -e "${YELLOW}────────────────────────────────────────────────────────────${NC}"
+
+# Kill any existing forensic_analyzer processes on our ports
+EXISTING_CPP=$(lsof -ti :$CPP_PORT 2>/dev/null || true)
+EXISTING_PY=$(lsof -ti :$PYTHON_PORT 2>/dev/null || true)
+
+if [ ! -z "$EXISTING_CPP" ]; then
+    echo -e "${YELLOW}⚠ Found existing C++ service on port $CPP_PORT (PID: $EXISTING_CPP)${NC}"
+    kill -9 $EXISTING_CPP 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}✓ Killed existing C++ service${NC}"
+fi
+
+if [ ! -z "$EXISTING_PY" ]; then
+    echo -e "${YELLOW}⚠ Found existing Python service on port $PYTHON_PORT (PID: $EXISTING_PY)${NC}"
+    kill -9 $EXISTING_PY 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}✓ Killed existing Python service${NC}"
+fi
+
+# ========================================================================
 # Start C++ HTTP Server
 # ========================================================================
 echo -e "\n${BLUE}➤ Step 1/3: Starting C++ HTTP Server${NC}"
@@ -158,20 +182,21 @@ echo -e "${GREEN}✓ Virtual environment found${NC}    ${CYAN}$VENV_DIR${NC}"
 # Install/update dependencies if needed
 if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ]; then
     echo -ne "${YELLOW}Installing dependencies...${NC}"
-    $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt && \
-        touch "$VENV_DIR/.deps_installed"
+    if ! $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt; then
+        echo -e " ${RED}✗ Failed${NC}"
+        echo -e "${RED}✗ Failed to install Python dependencies. Try recreating the venv:${NC}"
+        echo -e "  ${CYAN}rm -rf $VENV_DIR && python3 -m venv $VENV_DIR${NC}"
+        exit 1
+    fi
+    touch "$VENV_DIR/.deps_installed"
     echo -e " ${GREEN}✓ Done${NC}"
 fi
 
 # Start Python service with virtual environment
-# Run the module directly to avoid RuntimeWarning
-PYTHONPATH="$PROJECT_ROOT/python_service" \
-    $PYTHON_EXEC -c "
-import sys
-sys.path.insert(0, '$PROJECT_ROOT/python_service')
-from httpserver.main import run_server
-run_server()
-" > "$LOG_DIR/python_service.log" 2>&1 &
+# Run as module directly to avoid RuntimeWarning
+cd "$PROJECT_ROOT/python_service"
+PYTHONPATH="$PROJECT_ROOT/python_service:$PYTHONPATH" \
+    $PYTHON_EXEC -m httpserver.main > "$LOG_DIR/python_service.log" 2>&1 &
 PYTHON_PID=$!
 echo -e "${GREEN}✓ Python service started${NC}  PID: ${BOLD}$PYTHON_PID${NC} (Logging to $LOG_DIR/python_service.log)"
 

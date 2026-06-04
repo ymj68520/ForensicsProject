@@ -8,6 +8,8 @@
 #include <chrono>
 #include <atomic>
 #include <coroutine>
+#include <optional>
+#include <algorithm>
 
 // Forward declaration for XFSMode (from ImageAnalyzer)
 enum class XFSMode;
@@ -17,15 +19,51 @@ enum class XFSMode;
  */
 enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, CANCELLED };
 enum class TaskPriority { LOW = 0, NORMAL = 1, HIGH = 2, CRITICAL = 3 };
-enum class TaskPhase { 
-    INITIALIZING, 
-    IMAGE_ANALYSIS, 
-    EVENT_EXTRACTION, 
-    FILE_CLASSIFICATION, 
+enum class TaskPhase {
+    INITIALIZING,
+    IMAGE_ANALYSIS,
+    EVENT_EXTRACTION,
+    FILE_CLASSIFICATION,
     LLM_ANALYSIS,        // LLM file description generation
-    ANDROID_ANALYSIS, 
-    FINALIZING 
+    PLATFORM_ANALYSIS,   // Platform-specific analysis (Android/Windows/Linux/Server)
+    FINALIZING
 };
+
+/**
+ * @brief Forensic analysis scenario types
+ * Supports multi-scenario tasks where multiple platform analyzers run sequentially.
+ */
+enum class ForensicScenario {
+    ANDROID,        // Android device forensics (SMS, contacts, call logs, apps)
+    WINDOWS,        // Windows system forensics (registry, event logs, prefetch)
+    LINUX,          // Linux system forensics (logs, users, shell history, SSH)
+    SERVER_CLOUD    // Server/Cloud environment (Docker, K8s, Nginx, cloud configs)
+};
+
+/**
+ * @brief Convert ForensicScenario enum to string
+ */
+inline std::string scenario_to_string(ForensicScenario scenario) {
+    switch (scenario) {
+        case ForensicScenario::ANDROID: return "android";
+        case ForensicScenario::WINDOWS: return "windows";
+        case ForensicScenario::LINUX: return "linux";
+        case ForensicScenario::SERVER_CLOUD: return "server_cloud";
+        default: return "unknown";
+    }
+}
+
+/**
+ * @brief Convert string to ForensicScenario enum
+ * Returns std::nullopt if the string is not a valid scenario.
+ */
+inline std::optional<ForensicScenario> string_to_scenario(const std::string& str) {
+    if (str == "android") return ForensicScenario::ANDROID;
+    if (str == "windows") return ForensicScenario::WINDOWS;
+    if (str == "linux") return ForensicScenario::LINUX;
+    if (str == "server_cloud") return ForensicScenario::SERVER_CLOUD;
+    return std::nullopt;
+}
 
 /**
  * @brief LLM analysis mode
@@ -74,7 +112,13 @@ struct AnalysisTask {
     std::vector<TaskDependency> dependencies;
     std::vector<std::string> dependents;
     std::string result_cache;
-    bool android_analyze;
+    std::vector<ForensicScenario> scenarios;  // Selected forensic scenarios
+
+    // Backward compatibility: computed property
+    bool get_android_analyze() const {
+        return std::find(scenarios.begin(), scenarios.end(),
+                         ForensicScenario::ANDROID) != scenarios.end();
+    }
     XFSMode xfs_mode;
     std::string db_output_dir;
     std::atomic<bool> cancellation_requested{false};
@@ -86,6 +130,10 @@ struct AnalysisTask {
     std::string llm_mode = "smart";     // "full" or "smart"
     std::string output_descriptions_db; // Database for LLM-generated descriptions
     std::string case_description;       // Case description for LLM analysis
+    std::string graphiti_job_id;        // Job ID for Graphiti knowledge graph ingestion
+
+    // File filter options
+    std::string filter_profile;         // Filter profile name (e.g., "telecom_fraud")
 
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
@@ -97,13 +145,15 @@ struct AnalysisTask {
           created_time(other.created_time), started_time(other.started_time),
           completed_time(other.completed_time), execution_start_time(other.execution_start_time), dependencies(other.dependencies),
           dependents(other.dependents), result_cache(other.result_cache),
-          android_analyze(other.android_analyze), xfs_mode(other.xfs_mode),
+          scenarios(other.scenarios), xfs_mode(other.xfs_mode),
           db_output_dir(other.db_output_dir),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(other.error_details), metadata(other.metadata),
           llm_analyze(other.llm_analyze), llm_mode(other.llm_mode),
           output_descriptions_db(other.output_descriptions_db),
-          case_description(other.case_description) {}
+          case_description(other.case_description),
+          graphiti_job_id(other.graphiti_job_id),
+          filter_profile(other.filter_profile) {}
 
     AnalysisTask& operator=(const AnalysisTask& other) {
         if (this != &other) {
@@ -123,7 +173,7 @@ struct AnalysisTask {
             dependencies = other.dependencies;
             dependents = other.dependents;
             result_cache = other.result_cache;
-            android_analyze = other.android_analyze;
+            scenarios = other.scenarios;
             xfs_mode = other.xfs_mode;
             db_output_dir = other.db_output_dir;
             cancellation_requested.store(other.cancellation_requested.load());
@@ -133,6 +183,8 @@ struct AnalysisTask {
             llm_mode = other.llm_mode;
             output_descriptions_db = other.output_descriptions_db;
             case_description = other.case_description;
+            graphiti_job_id = other.graphiti_job_id;
+            filter_profile = other.filter_profile;
         }
         return *this;
     }
@@ -147,13 +199,15 @@ struct AnalysisTask {
           created_time(other.created_time), started_time(other.started_time),
           completed_time(other.completed_time), execution_start_time(other.execution_start_time), dependencies(std::move(other.dependencies)),
           dependents(std::move(other.dependents)), result_cache(std::move(other.result_cache)),
-          android_analyze(other.android_analyze), xfs_mode(other.xfs_mode),
+          scenarios(std::move(other.scenarios)), xfs_mode(other.xfs_mode),
           db_output_dir(std::move(other.db_output_dir)),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(std::move(other.error_details)), metadata(std::move(other.metadata)),
           llm_analyze(other.llm_analyze), llm_mode(std::move(other.llm_mode)),
           output_descriptions_db(std::move(other.output_descriptions_db)),
-          case_description(std::move(other.case_description)) {}
+          case_description(std::move(other.case_description)),
+          graphiti_job_id(std::move(other.graphiti_job_id)),
+          filter_profile(std::move(other.filter_profile)) {}
 
     AnalysisTask& operator=(AnalysisTask&& other) noexcept {
         if (this != &other) {
@@ -173,7 +227,7 @@ struct AnalysisTask {
             dependencies = std::move(other.dependencies);
             dependents = std::move(other.dependents);
             result_cache = std::move(other.result_cache);
-            android_analyze = other.android_analyze;
+            scenarios = std::move(other.scenarios);
             xfs_mode = other.xfs_mode;
             db_output_dir = std::move(other.db_output_dir);
             cancellation_requested.store(other.cancellation_requested.load());
@@ -183,6 +237,8 @@ struct AnalysisTask {
             llm_mode = std::move(other.llm_mode);
             output_descriptions_db = std::move(other.output_descriptions_db);
             case_description = std::move(other.case_description);
+            graphiti_job_id = std::move(other.graphiti_job_id);
+            filter_profile = std::move(other.filter_profile);
         }
         return *this;
     }
@@ -264,6 +320,61 @@ struct ExtractionJob {
     
     // Output location
     std::string output_path;          // Final output directory path
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ForensicCase — groups multiple AnalysisTasks under one investigation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @brief Case status (derived from contained tasks + cross-image analysis state)
+ */
+enum class CaseStatus {
+    OPEN,           ///< Tasks still running or not yet analysed
+    ANALYSING,      ///< Cross-image LLM analysis in progress (Python job)
+    COMPLETED,      ///< Cross-image report generated
+    FAILED          ///< Cross-image analysis failed
+};
+
+/**
+ * @brief Task analysis state for incremental case analysis
+ */
+enum class TaskAnalysisState {
+    PENDING,        ///< Task not yet analyzed
+    ANALYZED,       ///< Task has been analyzed (file_descriptions exist)
+    NEEDS_UPDATE,   ///< Task data changed, needs re-analysis
+    FAILED          ///< Task analysis failed
+};
+
+/**
+ * @brief A ForensicCase bundles N disk-image tasks under one investigation.
+ *
+ * The cross-image analysis (multi-image LLM aggregation) is triggered by the
+ * Python service after all contained tasks reach COMPLETED status.
+ *
+ * Extended with incremental analysis support:
+ * - Tracks analysis state of each task
+ * - Maintains case-level database for status persistence
+ * - Enables incremental addition of new tasks without re-analyzing all
+ */
+struct ForensicCase {
+    std::string id;                           ///< UUID
+    std::string name;                         ///< Human-readable case title
+    std::string description;                  ///< Case description (shared with LLM)
+    std::vector<std::string> task_ids;        ///< Ordered list of contained task IDs
+    CaseStatus status = CaseStatus::OPEN;
+    std::string cross_analysis_job_id;        ///< Python background job ID
+
+    std::chrono::system_clock::time_point created_at;
+    std::chrono::system_clock::time_point updated_at;
+
+    // Incremental analysis fields
+    std::string case_db_path;                 ///< Path to case-level status database
+    int total_files_analyzed = 0;             ///< Total files analyzed across all tasks
+    std::map<std::string, TaskAnalysisState> task_analysis_states;  ///< Per-task analysis state
+
+    // Copy / move — trivially default-constructible
+    ForensicCase() = default;
 };
 
 #endif // HTTP_SERVER_DATA_TYPES_H

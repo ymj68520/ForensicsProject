@@ -19,12 +19,60 @@ pkg_check_modules(LIBEVTX REQUIRED libevtx)
 pkg_check_modules(LIBBFIO REQUIRED libbfio)
 pkg_check_modules(LIBESEDB REQUIRED libesedb)
 pkg_check_modules(LIBOLECF REQUIRED libolecf)
+pkg_check_modules(LIBFSNTFS REQUIRED libfsntfs)
 pkg_check_modules(XAPIAN REQUIRED xapian-core)
 pkg_check_modules(POPPLER REQUIRED poppler-cpp)
+
+# Optional SQLCipher for encrypted database support (WeChat, etc.)
+pkg_check_modules(SQLCIPHER QUIET sqlcipher)
+if(SQLCIPHER_FOUND)
+  message(STATUS "SQLCipher found - encrypted database support enabled")
+  add_definitions(-DHAVE_SQLCIPHER)
+  # Use sqlcipher as drop-in replacement for sqlite3 (superset with encryption)
+  set(SQLITE_LINK_LIBRARIES ${SQLCIPHER_LIBRARIES})
+else()
+  message(STATUS "SQLCipher not found - encrypted database support disabled")
+  set(SQLITE_LINK_LIBRARIES ${SQLite3_LIBRARIES})
+endif()
 
 # Optional database connectors
 pkg_check_modules(MYSQLCLIENT mysqlclient)
 pkg_check_modules(LIBPQ libpq)
+
+# Optional compression libraries for compressed log parsing
+find_package(ZLIB QUIET)
+find_package(LibLZMA QUIET)
+find_package(BZip2 QUIET)
+pkg_check_modules(ZSTD QUIET libzstd)
+
+# Set compression library flags
+if(ZLIB_FOUND)
+  message(STATUS "zlib found - gzip support enabled")
+  add_definitions(-DHAVE_ZLIB)
+else()
+  message(STATUS "zlib not found - gzip support disabled")
+endif()
+
+if(LIBLZMA_FOUND)
+  message(STATUS "liblzma found - xz support enabled")
+  add_definitions(-DHAVE_LIBLZMA)
+else()
+  message(STATUS "liblzma not found - xz support disabled")
+endif()
+
+if(BZIP2_FOUND)
+  message(STATUS "bzip2 found - bz2 support enabled")
+  add_definitions(-DHAVE_BZIP2)
+else()
+  message(STATUS "bzip2 not found - bz2 support disabled")
+endif()
+
+if(ZSTD_FOUND)
+  message(STATUS "zstd found - zst support enabled")
+  add_definitions(-DHAVE_ZSTD)
+else()
+  message(STATUS "zstd not found - zst support disabled")
+endif()
 
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
@@ -84,8 +132,14 @@ include_directories(
   ${LIBBFIO_INCLUDE_DIRS}
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
+  ${LIBFSNTFS_INCLUDE_DIRS}
   ${XAPIAN_INCLUDE_DIRS}
   ${POPPLER_INCLUDE_DIRS}
+  ${ZLIB_INCLUDE_DIRS}
+  ${LIBLZMA_INCLUDE_DIRS}
+  ${BZIP2_INCLUDE_DIRS}
+  ${ZSTD_INCLUDE_DIRS}
+  ${SQLCIPHER_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/libs/sqlite3
   /usr/include/postgresql
   /usr/include/postgresql/16/server
@@ -98,6 +152,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager
   ${CMAKE_SOURCE_DIR}/src/core/AuditLog
   ${CMAKE_SOURCE_DIR}/src/core/PathManager
+  ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager/EventCorrelationEngine
   # Analyzer modules
   ${CMAKE_SOURCE_DIR}/src/analyzers
   ${CMAKE_SOURCE_DIR}/src/analyzers/FileCarving
@@ -111,6 +166,10 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Core
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Security
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Container
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Analysis
   ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/ImageAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/VisionAnalysis
@@ -119,6 +178,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/network
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer/routes
+  ${CMAKE_SOURCE_DIR}/src/network/HTTPServer/Queries
   # Office Module
   ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer
   # Integration modules
@@ -139,6 +199,12 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Common
   ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers
+  # DLLAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
   # Aliyun OSS SDK
   ${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/sdk/include
   # Libs
@@ -159,8 +225,13 @@ set(LIB_SOURCES
     src/analyzers/ImageAnalyzer/ImageAnalyzer.cpp
     src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
     src/core/DatabaseManager/DatabaseManager.cpp
-    src/core/DatabaseManager/EventExtractor/EventExtractor.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/EventExtractorCore.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/FileSystemEventExtractor.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/SystemEventExtractor.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/EventCorrelationExtractor.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+    src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
+    src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
     src/core/Logger/Logger.cpp
@@ -173,20 +244,63 @@ set(LIB_SOURCES
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
     src/network/HTTPServer/LLMAnalysisService.cpp
+    src/network/HTTPServer/WindowsLLMAnalysisService.cpp
+    src/network/HTTPServer/WindowsLLMAnalysisService_ArtifactAnalyzers.cpp
+    src/network/HTTPServer/WindowsLLMAnalysisService_Database.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService_ArtifactAnalyzers.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService_SystemAnalyzers.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService_Database.cpp
     src/network/HTTPServer/LLMPythonProxy.cpp
+    src/network/HTTPServer/EventClusterAnalyzer.cpp
     src/network/HTTPServer/routes/TaskRoutes.cpp
+    src/network/HTTPServer/routes/TaskHelpers.cpp
+    src/network/HTTPServer/routes/TaskCRUDRoutes.cpp
+    src/network/HTTPServer/routes/TaskBatchRoutes.cpp
+    src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp
+    src/network/HTTPServer/routes/CaseCRUDRoutes.cpp
+    src/network/HTTPServer/routes/FilterRoutes.cpp
+    src/network/HTTPServer/CaseManager.cpp
+    src/network/HTTPServer/TaskSerialization.cpp
+    src/network/HTTPServer/TaskPersistence.cpp
+    src/network/HTTPServer/TaskWatchdog.cpp
     src/network/HTTPServer/routes/ForensicsRoutes.cpp
+    src/network/HTTPServer/routes/RouteHelpers.cpp
+    src/network/HTTPServer/routes/TimelineRoutes.cpp
+    src/network/HTTPServer/routes/EventClusterRoutes.cpp
+    src/network/HTTPServer/routes/ExportRoutes.cpp
+    src/network/HTTPServer/routes/FileAnalysisRoutes.cpp
+    src/network/HTTPServer/routes/FileExtractionRoutes.cpp
+    src/network/HTTPServer/routes/StatisticsRoutes.cpp
+    src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp
+    src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp
+    src/network/HTTPServer/routes/SystemEventRoutes.cpp
     src/network/HTTPServer/routes/SystemRoutes.cpp
+    src/network/HTTPServer/routes/SystemHealthRoutes.cpp
+    src/network/HTTPServer/routes/SystemInfoRoutes.cpp
+    src/network/HTTPServer/routes/SystemDocsRoutes.cpp
     src/network/HTTPServer/routes/SearchRoutes.cpp
     src/network/HTTPServer/routes/OSSRoutes.cpp
+    src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp
+    src/network/HTTPServer/routes/OSSQueryRoutes.cpp
+    src/network/HTTPServer/routes/OSSStatsRoutes.cpp
     src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
     src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidSystemParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
+    src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
+    $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp>
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_EventLog.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Lnk.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Browser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_User.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_System.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
@@ -194,27 +308,71 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
-    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Init.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Helpers.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Chromium.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Firefox.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
     src/analyzers/LinuxFilesAnalyzer/Database/LinuxAnalysisDatabase.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
-    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/CompressedLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/JournalParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/AuditdAggregator.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/ApacheParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/NginxParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SetuidAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/CapabilityAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SELinuxAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/AppArmorParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Container/DockerContainerParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Container/PodmanParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Container/ContainerRuntimeLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/LogCorrelationEngine.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/TimelineReconstructor.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/AnomalyDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/LogTamperingDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/RuleEngine.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/USBMountParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/CloudParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/ExtendedHistoryParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SecurityBypassAnalyzer.cpp
     src/core/AuditLog/AuditLog.cpp
     src/core/PathManager/PathManager.cpp
     src/core/FullTextSearch/FullTextSearch.cpp
     src/core/FullTextSearch/TextExtractor.cpp
     src/core/TOONExporter/TOONExporter.cpp
+    src/core/FileFilter/FileFilter.cpp
     src/analyzers/FileCarving/FileCarver.cpp
+    # EventCorrelationEngine module
+    src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationAnalyzer.cpp
+    src/core/EventCorrelationEngine/Detail/EventChainBuilder.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationExporter.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationUtils.cpp
     # LLMIntegration module
     src/integration/LLMIntegration/LLMClient.cpp
     src/integration/LLMIntegration/ModelRouter.cpp
     src/integration/LLMIntegration/MCPIntegration.cpp
     src/integration/LLMIntegration/FileAnalyzer.cpp
+    src/integration/LLMIntegration/MarkitdownProxy.cpp
+    src/integration/LLMIntegration/FileContentExtractor.cpp
+    src/integration/LLMIntegration/FileTextProcessor.cpp
     src/core/ConfigManager/ConfigManager.cpp
+    src/CommandLineParser.cpp
+    src/AnalysisOrchestrator.cpp
     src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
     # OSSAnalyzer module
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp
@@ -232,6 +390,16 @@ set(LIB_SOURCES
     src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp
+    # DLLAnalyzer module
+    src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
+    src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+    src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
+    src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
+    src/analyzers/DLLAnalyzer/Parsers/ELFParser.cpp
+    src/analyzers/DLLAnalyzer/Parsers/SignatureVerifier.cpp
+    src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
+    src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp
+    src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp
@@ -251,13 +419,14 @@ else()
     forensic_analyzer
     ${TSK_LIBRARIES}
     ewf
-    ${SQLite3_LIBRARIES}
+    ${SQLITE_LINK_LIBRARIES}
     ${Boost_LIBRARIES}
     ${HIVEX_LIBRARIES}
     ${LIBEVTX_LIBRARIES}
     ${LIBBFIO_LIBRARIES}
     ${LIBESEDB_LIBRARIES}
     ${LIBOLECF_LIBRARIES}
+    ${LIBFSNTFS_LIBRARIES}
     ${XAPIAN_LIBRARIES}
     ${POPPLER_LIBRARIES}
     mysqlclient
@@ -268,6 +437,10 @@ else()
     curl
     OpenSSL::SSL
     OpenSSL::Crypto
+    ${ZLIB_LIBRARIES}
+    ${LIBLZMA_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    ${ZSTD_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 

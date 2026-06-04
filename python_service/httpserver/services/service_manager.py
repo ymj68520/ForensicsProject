@@ -43,6 +43,8 @@ class ServiceManager:
         self._cpp_backend: Optional["CppBackendService"] = None
         self._graphiti_service: Optional["GraphitiService"] = None
         self._llm_service: Optional["LLMService"] = None
+        self._ingestion_job_manager: Optional["IngestionJobManager"] = None
+        self._migration_manager: Optional["MigrationManager"] = None
         self._initialized = False
     
     async def initialize(self):
@@ -75,7 +77,36 @@ class ServiceManager:
             await self._llm_service.initialize()
         except Exception as e:
             logger.warning(f"LLM service initialization failed: {e}")
-        
+
+        # Initialize IngestionJobManager
+        try:
+            from .ingestion_job_manager import IngestionJobManager
+            self._ingestion_job_manager = IngestionJobManager(self.settings)
+            await self._ingestion_job_manager.initialize()
+        except Exception as e:
+            logger.warning(f"IngestionJobManager initialization failed: {e}")
+
+        # Initialize MigrationManager (optional, requires Neo4j)
+        try:
+            # Import with absolute import path since graphiti_integration is sibling to httpserver
+            import sys
+            from pathlib import Path
+            # Add python_service to path if not already there
+            python_service_path = str(Path(__file__).parent.parent.parent)
+            if python_service_path not in sys.path:
+                sys.path.insert(0, python_service_path)
+            from graphiti_integration.migration import MigrationManager
+            self._migration_manager = MigrationManager(
+                neo4j_uri=self.settings.neo4j_uri,
+                neo4j_user=self.settings.neo4j_user,
+                neo4j_password=self.settings.neo4j_password
+            )
+            await self._migration_manager.initialize()
+        except ImportError as e:
+            logger.warning(f"MigrationManager import failed: {e}")
+        except Exception as e:
+            logger.warning(f"MigrationManager initialization failed: {e}")
+
         self._initialized = True
         logger.info("All services initialized successfully")
     
@@ -91,7 +122,13 @@ class ServiceManager:
         
         if self._llm_service:
             await self._llm_service.shutdown()
-        
+
+        if self._ingestion_job_manager:
+            await self._ingestion_job_manager.shutdown()
+
+        if self._migration_manager:
+            await self._migration_manager.close()
+
         self._initialized = False
         logger.info("All services shut down")
     
@@ -118,7 +155,17 @@ class ServiceManager:
             from .llm_service import LLMService
             self._llm_service = LLMService(self.settings)
         return self._llm_service
-    
+
+    @property
+    def ingestion_job_manager(self) -> Optional["IngestionJobManager"]:
+        """Get the IngestionJobManager service."""
+        return self._ingestion_job_manager
+
+    @property
+    def migration_manager(self) -> Optional["MigrationManager"]:
+        """Get the MigrationManager service."""
+        return self._migration_manager
+
     async def health_check(self) -> dict:
         """
         Check health of all services.
