@@ -1,11 +1,16 @@
 #include "LLMAnalysisService.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
+#include "DatabaseManager/FileExtractor/FileExtractor.h"
+#include "core/PathManager/PathManager.h"
 #include <sqlite3.h>
 #include <iostream>
 #include <filesystem>
 #include <sstream>
 #include <algorithm>
 #include <ctime>
+#include <cstring>
+
+namespace fs = std::filesystem;
 
 namespace forensics {
 
@@ -34,6 +39,67 @@ bool LLMAnalysisService::initialize() {
     } catch (const std::exception& e) {
         std::cerr << "Failed to initialize LLMAnalysisService: " << e.what() << std::endl;
         return false;
+    }
+}
+
+void LLMAnalysisService::setImagePaths(const std::string& imagePath, const std::string& rawDbPath) {
+    imagePath_ = imagePath;
+    rawDbPath_ = rawDbPath;
+}
+
+std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePath) {
+    // No image configured: file paths are host-filesystem paths (e.g. loose files)
+    if (imagePath_.empty() || rawDbPath_.empty()) {
+        return filePath;
+    }
+
+    // Fast path: if the file already exists on the host filesystem, use it directly.
+    if (fs::exists(filePath)) {
+        return filePath;
+    }
+
+    // Extract the file from the forensic image to a temporary directory.
+    try {
+        FileExtractor extractor(imagePath_, rawDbPath_);
+        if (!extractor.initialize()) {
+            std::cerr << "Warning: Failed to initialize FileExtractor for image: " << imagePath_ << std::endl;
+            return "";
+        }
+
+        // Build a safe output path under the task's extracted_files directory.
+        // The filePath is relative to the image root (e.g. "grub/grub.cfg").
+        // Normalize it into a flat filename to avoid directory traversal issues.
+        std::string safeName = filePath;
+        std::replace(safeName.begin(), safeName.end(), '/', '_');
+        std::replace(safeName.begin(), safeName.end(), '\\', '_');
+
+        // Use a dedicated temp dir keyed by process to avoid collisions across tasks.
+        fs::path extractDir = fs::temp_directory_path() / "forensics_llm_extract";
+        fs::create_directories(extractDir);
+        fs::path outputPath = extractDir / safeName;
+
+        if (extractor.extractFileByPath(filePath, outputPath)) {
+            return outputPath.string();
+        }
+
+        // Some images store paths with a leading slash; retry without it.
+        if (!filePath.empty() && filePath[0] == '/') {
+            if (extractor.extractFileByPath(filePath.substr(1), outputPath)) {
+                return outputPath.string();
+            }
+        }
+        // Or with a leading slash added.
+        if (filePath.empty() || filePath[0] != '/') {
+            if (extractor.extractFileByPath("/" + filePath, outputPath)) {
+                return outputPath.string();
+            }
+        }
+
+        std::cerr << "Warning: Could not extract file from image: " << filePath << std::endl;
+        return "";
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Exception extracting file " << filePath << ": " << e.what() << std::endl;
+        return "";
     }
 }
 
@@ -68,11 +134,17 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
         }
 
         try {
-            auto result = fileAnalyzer_->analyzeFile(filePath, options.maxContentLength);
-            
+            // Resolve the file to a host-filesystem path (extract from image if needed)
+            std::string localPath = resolveFileForAnalysis(filePath);
+            if (localPath.empty()) {
+                continue;  // extraction failed, warning already logged
+            }
+
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+
             if (result.success) {
                 // Store directly to _files.db in the files table
-                storeDescription(filesDbPath, filePath, 
+                storeDescription(filesDbPath, filePath,
                                 result.description, result.summary, result.keywords,
                                 result.modelUsed);
                 analyzed++;
@@ -112,8 +184,14 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
         }
 
         try {
-            auto result = fileAnalyzer_->analyzeFile(filePath, options.maxContentLength);
-            
+            // Resolve the file to a host-filesystem path (extract from image if needed)
+            std::string localPath = resolveFileForAnalysis(filePath);
+            if (localPath.empty()) {
+                continue;  // extraction failed, warning already logged
+            }
+
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+
             if (result.success) {
                 // Store directly to _files.db in the files table
                 storeDescription(filesDbPath, filePath,
@@ -141,7 +219,6 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     AnalysisOptions opts;
     opts.maxFiles = 10000;  // Get more files for smart selection
     auto allFiles = getFilesFromDatabase(filesDbPath, opts);
-    
     if (allFiles.empty()) {
         return {};
     }
@@ -237,12 +314,52 @@ bool LLMAnalysisService::storeDescription(const std::string& dbPath,
     rc = sqlite3_step(stmt);
     int changes = sqlite3_changes(db);
     sqlite3_finalize(stmt);
-    sqlite3_close(db);
 
     if (rc != SQLITE_DONE) {
         std::cerr << "Failed to update LLM analysis for file: " << filePath << std::endl;
+        sqlite3_close(db);
         return false;
     }
+
+    // Also write to the file_descriptions table with is_relevant=1 so that
+    // AI-analyzed files from the main pipeline appear in the investigation
+    // center's evidence list automatically. The Python side (persist_to_files_db)
+    // does the same; the C++ side must stay in sync.
+    sqlite3_exec(db,
+        "CREATE TABLE IF NOT EXISTS file_descriptions ("
+        "  file_path TEXT PRIMARY KEY,"
+        "  description TEXT,"
+        "  summary TEXT,"
+        "  keywords TEXT,"
+        "  model_used TEXT,"
+        "  is_relevant INTEGER DEFAULT 0,"
+        "  created_at INTEGER DEFAULT 0"
+        ")",
+        nullptr, nullptr, nullptr);
+
+    sqlite3_stmt* descStmt = nullptr;
+    const char* descSql =
+        "INSERT INTO file_descriptions (file_path, description, summary, keywords, model_used, is_relevant, created_at) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?) "
+        "ON CONFLICT(file_path) DO UPDATE SET "
+        "  description = excluded.description, "
+        "  summary = excluded.summary, "
+        "  keywords = excluded.keywords, "
+        "  model_used = excluded.model_used, "
+        "  created_at = excluded.created_at";
+
+    if (sqlite3_prepare_v2(db, descSql, -1, &descStmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(descStmt, 1, filePath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 3, summary.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 4, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(descStmt, 6, currentTime);
+        sqlite3_step(descStmt);
+        sqlite3_finalize(descStmt);
+    }
+
+    sqlite3_close(db);
 
     if (changes == 0) {
         std::cerr << "Warning: No rows updated for file: " << filePath << std::endl;
@@ -378,6 +495,108 @@ std::vector<std::string> LLMAnalysisService::parseImportantFiles(const std::stri
     }
 
     return importantFiles;
+}
+
+void LLMAnalysisService::setSceneType(SceneType scene) {
+    sceneType_ = scene;
+}
+
+SceneType LLMAnalysisService::getSceneType() const {
+    return sceneType_;
+}
+
+std::vector<FileRecord> LLMAnalysisService::getScenePrioritizedFiles(sqlite3* db, int limit) {
+    std::vector<FileRecord> files;
+
+    std::string query;
+    if (sceneType_ != SceneType::NONE) {
+        query = "SELECT id, inode, name, path, size, extension, category, type, "
+                "mtime, ctime, is_deleted, md5, scene_type, scene_priority, scene_relevant "
+                "FROM files WHERE type = 'REG' "
+                "AND (llm_analyzed_at IS NULL OR llm_analyzed_at = 0) "
+                "AND scene_priority > 0 "
+                "ORDER BY scene_priority DESC, size ASC LIMIT ?";
+    } else {
+        query = "SELECT id, inode, name, path, size, extension, category, type, "
+                "mtime, ctime, is_deleted, md5, NULL, 0, 0 "
+                "FROM files WHERE type = 'REG' "
+                "AND (llm_analyzed_at IS NULL OR llm_analyzed_at = 0) "
+                "ORDER BY size ASC LIMIT ?";
+    }
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return files;
+    }
+
+    sqlite3_bind_int(stmt, 1, limit);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        FileRecord file;
+        file.id = sqlite3_column_int(stmt, 0);
+        file.inode = sqlite3_column_int64(stmt, 1);
+
+        const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        file.name = name ? name : "";
+
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        file.path = path ? path : "";
+
+        file.size = sqlite3_column_int64(stmt, 4);
+
+        const char* ext = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        file.extension = ext ? ext : "";
+
+        const char* cat = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        file.category = cat ? cat : "";
+
+        const char* type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        file.type = type ? type : "";
+
+        file.mtime = sqlite3_column_int64(stmt, 8);
+        file.ctime = sqlite3_column_int64(stmt, 9);
+        file.isDeleted = sqlite3_column_int(stmt, 10);
+
+        const char* md5 = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11));
+        file.md5 = md5 ? md5 : "";
+
+        const char* sceneType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+        file.sceneType = sceneType ? sceneType : "";
+
+        file.scenePriority = sqlite3_column_int(stmt, 13);
+        file.sceneRelevant = sqlite3_column_int(stmt, 14);
+
+        files.push_back(file);
+    }
+
+    sqlite3_finalize(stmt);
+    return files;
+}
+
+bool LLMAnalysisService::shouldSkipFile(const FileRecord& file) {
+    if (sceneType_ == SceneType::NONE) return false;
+    return file.scenePriority == 0;
+}
+
+std::string LLMAnalysisService::getSceneSpecificPrompt(const FileRecord& file) {
+    std::string basePrompt = "Analyze this forensic file and provide:\n"
+        "1. A brief summary of the file's purpose\n"
+        "2. A detailed description of its contents\n"
+        "3. Relevant keywords for searching\n\n"
+        "File path: " + file.path + "\n"
+        "File name: " + file.name + "\n";
+
+    if (sceneType_ == SceneType::ANDROID) {
+        basePrompt += "\nAndroid forensic analysis. Focus on mobile app data, communications, and device configuration.\n";
+    } else if (sceneType_ == SceneType::WINDOWS) {
+        basePrompt += "\nWindows forensic analysis. Focus on registry artifacts, event logs, and user activity.\n";
+    } else if (sceneType_ == SceneType::LINUX) {
+        basePrompt += "\nLinux forensic analysis. Focus on system logs, user accounts, and network configuration.\n";
+    } else if (sceneType_ == SceneType::SERVER_CLOUD) {
+        basePrompt += "\nServer/Cloud forensic analysis. Focus on system logs, network configuration, and service artifacts.\n";
+    }
+
+    return basePrompt;
 }
 
 } // namespace forensics

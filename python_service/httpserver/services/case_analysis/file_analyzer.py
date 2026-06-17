@@ -588,10 +588,16 @@ class FileAnalyzer:
                 episodes=episodes,
                 group_id=task_id,
             )
-            logger.info(
-                f"Graphiti ingestion complete: {getattr(result, 'successful', 0)}/{getattr(result, 'total_episodes', len(episodes))} successful"
-            )
-            return getattr(result, 'successful', 0) > 0
+            successful = getattr(result, 'successful', 0)
+            total = getattr(result, 'total_episodes', len(episodes))
+            failed = getattr(result, 'failed', 0)
+            errors = getattr(result, 'errors', []) or []
+            logger.info(f"Graphiti ingestion complete: {successful}/{total} successful, {failed} failed")
+            # Surface per-episode failures so LLM extraction problems (the usual
+            # cause of a sparse graph) are visible instead of silently swallowed.
+            for err in errors[:5]:
+                logger.warning(f"[{task_id}] Episode ingestion failure: {err}")
+            return successful > 0
 
         except ImportError:
             logger.warning("graphiti_integration not available, skipping KG ingestion")
@@ -643,7 +649,7 @@ class FileAnalyzer:
                         (timestamp / 60) as time_window,
                         event_type,
                         COUNT(*) as cluster_count,
-                        CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END as parent_directory,
+                        CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END as parent_directory,
                         GROUP_CONCAT(COALESCE(description, ''), '\n') as group_desc,
                         GROUP_CONCAT(COALESCE(file_path, ''), '\n') as group_paths,
                         id as first_event_id

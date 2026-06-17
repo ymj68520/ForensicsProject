@@ -13,7 +13,7 @@ C++ HTTP 服务运行在端口 **8080**，提供高性能的取证分析、任�
 
 **路由文件结构**：
 
-API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由文件中：
+API 端点分布在 `src/network/HTTPServer/routes/` 下的 29 个独立路由文件中：
 
 | 路由文件 | 功能域 | 端点数 |
 |----------|--------|--------|
@@ -28,12 +28,17 @@ API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由�
 | `DLLAnalysisRoutes.cpp` | DLL 分析 | 7 |
 | `StatisticsRoutes.cpp` | 统计分析 | 4 |
 | `AndroidForensicsRoutes.cpp` | Android 取证 | 4 |
-| `ExportRoutes.cpp` | 数据导出 | 4 |
+| `ExportRoutes.cpp` | 数据导出（TOON/JSON/CSV） | 4 |
 | `SearchRoutes.cpp` | 全文搜索 | 3 |
 | `SystemHealthRoutes.cpp` | 健康检查 | 5 |
 | `SystemInfoRoutes.cpp` | 系统信息 | 5 |
 | `SystemDocsRoutes.cpp` | API 文档 | 1 |
 | `SystemEventRoutes.cpp` | 系统事件 | 2 |
+| `SceneQueryRoutes.cpp` | 场景查询 | 2 |
+| `OSSAnalysisRoutes.cpp` | OSS 分析启动和 AI 分析 | 6 |
+| `OSSQueryRoutes.cpp` | OSS 对象和日志查询 | 2 |
+| `OSSStatsRoutes.cpp` | OSS 统计信息 | 4 |
+| `FilterRoutes.cpp` | 文件过滤配置管理 | 5 |
 
 完整路由参考见 [RouteReference.md](../modules/cpp/network/routes/RouteReference.md)。
 
@@ -44,9 +49,13 @@ API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由�
 1. [任务管理 API](#1-任务管理-api)
 2. [案例管理 API](#2-案例管理-api)
 3. [取证分析 API](#3-取证分析-api)
-4. [DLL 分析 API](#4-dll-分析-api)
-5. [全文搜索 API](#5-全文搜索-api)
-6. [系统信息 API](#6-系统信息-api)
+4. [场景查询 API](#4-场景查询-api)
+5. [DLL 分析 API](#5-dll-分析-api)
+6. [OSS 对象存储分析 API](#6-oss-对象存储分析-api)
+7. [文件过滤配置 API](#7-文件过滤配置-api)
+8. [全文搜索 API](#8-全文搜索-api)
+9. [系统信息 API](#9-系统信息-api)
+10. [场景感知分析优化](#10-场景感知分析优化)
 
 ---
 
@@ -62,9 +71,8 @@ API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由�
   "image_path": "/path/to/evidence.E01",
   "case_name": "Case #123",
   "priority": "NORMAL",
+  "scenarios": ["android", "windows"],
   "options": {
-    "android_analyze": true,
-    "windows_analyze": true,
     "llm_analysis": true
   }
 }
@@ -77,17 +85,31 @@ API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由�
 | `image_path` | string | ✅ | - | 磁盘镜像文件路径 |
 | `case_name` | string | ❌ | - | 案例名称 |
 | `priority` | string | ❌ | NORMAL | 任务优先级（LOW/NORMAL/HIGH/CRITICAL） |
+| `scenarios` | array | ❌ | [] | 取证场景列表，见下方场景值 |
 | `options` | object | ❌ | - | 分析选项 |
+
+**取证场景值** (`scenarios`)：
+
+| 值 | 说明 |
+|------|------|
+| `"android"` | Android 设备取证（SMS、联系人、通话记录、应用数据） |
+| `"windows"` | Windows 系统取证（注册表、事件日志、Prefetch、浏览器历史） |
+| `"linux"` | Linux 系统取证（系统日志、用户账户、Shell 历史、SSH） |
+| `"server_cloud"` | 服务器/云环境取证（Docker、Nginx/Apache、K8s、云配置） |
+
+> **场景感知优化**：指定场景后，文件分类阶段会自动为相关文件分配更高的场景优先级，LLM 分析阶段会优先处理场景相关的高优先级文件。详见 [场景感知分析优化](#场景感知分析优化)。
 
 **分析选项**：
 
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `android_analyze` | boolean | false | 是否执行 Android 分析 |
-| `windows_analyze` | boolean | false | 是否执行 Windows 分析 |
-| `linux_analyze` | boolean | false | 是否执行 Linux 分析 |
+| `android_analyze` | boolean | false | 是否执行 Android 分析（已废弃，使用 `scenarios`） |
+| `windows_analyze` | boolean | false | 是否执行 Windows 分析（已废弃，使用 `scenarios`） |
+| `linux_analyze` | boolean | false | 是否执行 Linux 分析（已废弃，使用 `scenarios`） |
 | `llm_analysis` | boolean | false | 是否执行 LLM 分析 |
 | `file_carving` | boolean | false | 是否执行文件雕刻 |
+
+> **向后兼容**：如果请求中没有 `scenarios` 但有 `android_analyze: true`，系统自动转换为 `scenarios: ["android"]`。
 
 **响应**：
 ```json
@@ -1663,7 +1685,204 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-## 4. DLL 分析 API
+## 4. 场景查询 API
+
+> 路由代码：`src/network/HTTPServer/routes/SceneQueryRoutes.cpp`
+
+场景查询 API 提供对已完成任务的场景文件统计和场景制品查询功能。这些端点用于了解场景感知分析的结果，包括各场景的文件分布、相关文件数量和 LLM 分析覆盖情况。
+
+### GET /api/tasks/{id}/scene-stats
+
+**描述**：获取指定任务的场景文件统计信息，按场景类型分组。返回各场景的文件总数、相关文件数、总大小和 LLM 分析覆盖情况。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | string | ✅ | 任务 ID |
+
+**响应**：
+```json
+{
+  "task_id": "task_abc123",
+  "scene_stats": [
+    {
+      "scene_type": "android",
+      "total_files": 1500,
+      "relevant_files": 450,
+      "total_size": 1073741824,
+      "llm_analyzed_files": 400
+    },
+    {
+      "scene_type": "windows",
+      "total_files": 3200,
+      "relevant_files": 890,
+      "total_size": 2147483648,
+      "llm_analyzed_files": 750
+    }
+  ],
+  "artifact_stats": [
+    {
+      "scene_type": "android",
+      "artifact_count": 500,
+      "analyzed_count": 420
+    },
+    {
+      "scene_type": "windows",
+      "artifact_count": 1200,
+      "analyzed_count": 1050
+    },
+    {
+      "scene_type": "linux",
+      "artifact_count": 0,
+      "analyzed_count": 0
+    }
+  ]
+}
+```
+
+**响应字段说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `task_id` | string | 任务 ID |
+| `scene_stats` | array | 按场景类型分组的文件统计 |
+| `scene_stats[].scene_type` | string | 场景类型（android/windows/linux/server_cloud） |
+| `scene_stats[].total_files` | integer | 该场景下的文件总数 |
+| `scene_stats[].relevant_files` | integer | 被标记为场景相关的文件数 |
+| `scene_stats[].total_size` | integer | 文件总大小（字节） |
+| `scene_stats[].llm_analyzed_files` | integer | 已完成 LLM 分析的文件数 |
+| `artifact_stats` | array | 按场景类型分组的制品统计 |
+| `artifact_stats[].scene_type` | string | 场景类型 |
+| `artifact_stats[].artifact_count` | integer | 制品总数 |
+| `artifact_stats[].analyzed_count` | integer | 已完成 LLM 分析的制品数 |
+
+**HTTP 状态码**：
+- `200` - 查询成功
+- `400` - task_id 为空
+- `404` - 任务不存在
+- `500` - 服务器内部错误（数据库打开失败等）
+
+**备注**：
+- `scene_stats` 查询 `files` 表中 `scene_type IS NOT NULL` 的记录，按 `scene_type` 分组统计。
+- `artifact_stats` 分别查询 `android_artifacts`、`windows_artifacts`、`linux_artifacts` 表。如果某个制品表不存在，对应的统计项会返回 `artifact_count: 0`。
+- `llm_analyzed_files` 和 `analyzed_count` 通过 `llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0` 判断。
+
+---
+
+### GET /api/tasks/{id}/scene-artifacts
+
+**描述**：获取指定任务中特定场景类型的制品列表，支持分页。返回制品详情及关联的源文件信息。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | string | ✅ | 任务 ID |
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `scene_type` | string | ✅ | - | 场景类型（`android`、`windows`、`linux`） |
+| `limit` | integer | ❌ | 100 | 每页返回数量 |
+| `offset` | integer | ❌ | 0 | 分页偏移量 |
+
+**响应**：
+```json
+{
+  "task_id": "task_abc123",
+  "scene_type": "android",
+  "artifacts": [
+    {
+      "id": 1,
+      "file_id": 42,
+      "artifact_type": "sms",
+      "artifact_data": "{\"address\":\"+1234567890\",\"body\":\"Hello\",\"date\":\"2024-01-15T10:00:00Z\"}",
+      "extracted_at": 1705312800,
+      "llm_summary": "普通问候短信",
+      "llm_description": "一条发送给 +1234567890 的短信，内容为 Hello",
+      "llm_keywords": "短信,问候,通讯",
+      "llm_analyzed_at": 1705312900,
+      "llm_model_used": "qwen2.5-7b",
+      "file_name": "mmssms.db",
+      "file_path": "/data/data/com.android.providers.telephony/databases/mmssms.db",
+      "file_size": 204800
+    },
+    {
+      "id": 2,
+      "file_id": 43,
+      "artifact_type": "contact",
+      "artifact_data": "{\"display_name\":\"John\",\"phone_number\":\"+1234567890\"}",
+      "extracted_at": 1705312801,
+      "llm_summary": "",
+      "llm_description": "",
+      "llm_keywords": "",
+      "llm_analyzed_at": 0,
+      "llm_model_used": "",
+      "file_name": "contacts2.db",
+      "file_path": "/data/data/com.android.providers.contacts/databases/contacts2.db",
+      "file_size": 102400
+    }
+  ],
+  "total": 500,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**响应字段说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `task_id` | string | 任务 ID |
+| `scene_type` | string | 场景类型 |
+| `artifacts` | array | 制品列表 |
+| `artifacts[].id` | integer | 制品 ID |
+| `artifacts[].file_id` | integer | 关联的源文件 ID（`files` 表外键） |
+| `artifacts[].artifact_type` | string | 制品类型（如 sms、contact、call_log、registry 等） |
+| `artifacts[].artifact_data` | string | 制品数据（JSON 字符串） |
+| `artifacts[].extracted_at` | integer | 提取时间（Unix 时间戳） |
+| `artifacts[].llm_summary` | string | LLM 生成的摘要 |
+| `artifacts[].llm_description` | string | LLM 生成的详细描述 |
+| `artifacts[].llm_keywords` | string | LLM 生成的关键词（逗号分隔） |
+| `artifacts[].llm_analyzed_at` | integer | LLM 分析完成时间（Unix 时间戳，0 表示未分析） |
+| `artifacts[].llm_model_used` | string | 分析使用的模型名称 |
+| `artifacts[].file_name` | string | 源文件名 |
+| `artifacts[].file_path` | string | 源文件路径 |
+| `artifacts[].file_size` | integer | 源文件大小（字节） |
+| `total` | integer | 该场景类型的制品总数 |
+| `limit` | integer | 当前每页数量 |
+| `offset` | integer | 当前偏移量 |
+
+**HTTP 状态码**：
+- `200` - 查询成功（包括制品表不存在时返回空列表）
+- `400` - 参数错误（scene_type 缺失或无效）
+- `404` - 任务不存在
+- `500` - 服务器内部错误
+
+**scene_type 有效值**：
+- `android` - 查询 `android_artifacts` 表（SMS、联系人、通话记录等）
+- `windows` - 查询 `windows_artifacts` 表（注册表、事件日志等）
+- `linux` - 查询 `linux_artifacts` 表（系统日志、用户账户等）
+
+> **安全说明**：`scene_type` 参数经过白名单验证（仅接受 android/windows/linux），防止 SQL 注入。制品表名通过字符串拼接构造，但因已验证输入值，不存在注入风险。
+
+**分页示例**：
+```bash
+# 获取第一页（前 100 条 Android 制品）
+curl "http://localhost:8080/api/tasks/task_abc123/scene-artifacts?scene_type=android&limit=100&offset=0"
+
+# 获取第二页
+curl "http://localhost:8080/api/tasks/task_abc123/scene-artifacts?scene_type=android&limit=100&offset=100"
+
+# 获取 Windows 注册表制品
+curl "http://localhost:8080/api/tasks/task_abc123/scene-artifacts?scene_type=windows&limit=50"
+```
+
+---
+
+## 5. DLL 分析 API
 
 > 路由代码：`src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp`
 > 分析器：`src/analyzers/DLLAnalyzer/Core/DLLAnalyzer.h`
@@ -1850,7 +2069,218 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-## 5. 全文搜索 API
+## 6. OSS 对象存储分析 API
+
+OSS（Object Storage Service）分析 API 提供阿里云 OSS 对象存储的取证分析能力，包括对象枚举、访问日志分析、AI 智能过滤和统计查询。
+
+### POST /api/forensics/oss/analyze
+
+**描述**：启动 OSS 分析任务。
+
+**请求体**：
+```json
+{
+  "access_key_id": "string",
+  "access_key_secret": "string",
+  "endpoint": "oss-cn-hangzhou.aliyuncs.com",
+  "bucket": "my-bucket",
+  "mode": "api|local|inventory|access_log",
+  "local_path": "/path/to/local/data"
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "uuid",
+    "status": "running"
+  }
+}
+```
+
+### GET /api/forensics/oss/analyze/status
+
+**描述**：获取 OSS 分析任务状态。
+
+**查询参数**：`task_id` (string, required)
+
+### POST /api/forensics/oss/ai/filter
+
+**描述**：启动 AI 智能过滤 OSS 对象。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "description": "查找与案件相关的文档",
+  "model": "qwen2.5:7b"
+}
+```
+
+### POST /api/forensics/oss/ai/analyze
+
+**描述**：启动 AI 分析已过滤的 OSS 对象。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "object_ids": [1, 2, 3],
+  "model": "qwen2.5:7b"
+}
+```
+
+### POST /api/forensics/oss/download
+
+**描述**：下载 OSS 对象到本地进行分析。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "object_key": "path/to/file.pdf"
+}
+```
+
+### GET /api/forensics/oss/ai/status
+
+**描述**：获取 AI 分析状态。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/objects
+
+**描述**：查询 OSS 对象列表。
+
+**查询参数**：
+- `task_id` (string, required)
+- `bucket` (string, optional)
+- `prefix` (string, optional)
+- `extension` (string, optional)
+- `limit` (int, default 100)
+- `offset` (int, default 0)
+
+### GET /api/forensics/oss/logs
+
+**描述**：获取 OSS 访问日志。
+
+**查询参数**：
+- `task_id` (string, required)
+- `start_time` (int, optional)
+- `end_time` (int, optional)
+- `operation` (string, optional)
+
+### GET /api/forensics/oss/summary
+
+**描述**：获取 OSS 分析摘要统计。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/stats/storage-class
+
+**描述**：获取存储类型统计。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/stats/extensions
+
+**描述**：获取文件扩展名统计。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/buckets
+
+**描述**：获取 Bucket 列表。
+
+**查询参数**：`task_id` (string, required)
+
+---
+
+## 7. 文件过滤配置 API
+
+文件过滤 API 提供过滤配置文件的管理和应用能力，支持按扩展名、路径模式、文件大小等条件过滤文件。
+
+### GET /api/filter/profiles
+
+**描述**：列出所有可用的过滤配置文件。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "profiles": ["default", "documents_only", "images_only", "custom_profile"]
+  }
+}
+```
+
+### GET /api/filter/profiles/{name}
+
+**描述**：获取指定过滤配置文件的详细信息。
+
+**路径参数**：`name` (string) - 配置文件名称
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "name": "documents_only",
+    "conditions": {
+      "extensions": [".pdf", ".doc", ".docx"],
+      "path_patterns": ["*/Documents/*"],
+      "min_size": 0,
+      "max_size": 104857600,
+      "include_deleted": false
+    },
+    "combine_mode": "ExcludeWins"
+  }
+}
+```
+
+### POST /api/filter/profiles
+
+**描述**：创建或更新过滤配置文件。
+
+**请求体**：
+```json
+{
+  "name": "custom_profile",
+  "conditions": {
+    "extensions": [".jpg", ".png", ".gif"],
+    "path_patterns": ["*/Pictures/*", "*/Photos/*"],
+    "min_size": 1024,
+    "max_size": 52428800,
+    "include_deleted": true,
+    "include_allocated": true
+  },
+  "combine_mode": "ExcludeWins"
+}
+```
+
+### DELETE /api/filter/profiles/{name}
+
+**描述**：删除自定义过滤配置文件。
+
+**路径参数**：`name` (string) - 配置文件名称
+
+### POST /api/filter/apply
+
+**描述**：将过滤配置应用到指定任务。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "profile_name": "documents_only"
+}
+```
+
+---
+
+## 8. 全文搜索 API
 
 ### POST /api/search/index
 
@@ -1946,7 +2376,7 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-## 6. 系统信息 API
+## 9. 系统信息 API
 
 ### Health Checks
 
@@ -2354,14 +2784,85 @@ Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With
 
 ---
 
+## 10. 场景感知分析优化
+
+场景感知分析是本工具的核心优化特性，通过在任务创建时指定取证场景（`scenarios` 参数），系统会在分析管线的多个阶段自动优化处理策略。
+
+### 场景类型
+
+| 场景 | 值 | 关键路径/文件 | 分析器 |
+|------|-----|--------------|--------|
+| Android | `android` | `/data/data/com.android.providers.*`、`.db` 文件 | `AndroidAnalyzer` |
+| Windows | `windows` | `Windows/System32/config`、`.evtx`、`Prefetch` | `WindowsFilesAnalyzer` |
+| Linux | `linux` | `/var/log`、`/etc`、`.bash_history`、`/home` | `LinuxFilesAnalyzer` |
+| 服务器/云 | `server_cloud` | `/var/lib/docker`、`/etc/nginx`、`/etc/kubernetes` | `LinuxFilesAnalyzer`（扩展） |
+
+### 优化阶段
+
+#### 1. 文件分类阶段
+
+在文件分类阶段（`FileClassifier`），系统根据选定的场景对每个文件计算**场景优先级**（`scene_priority`）和**场景相关性**（`scene_relevant`）：
+
+- **scene_priority**（0-100）：文件与场景的关联程度
+  - `CRITICAL` (100)：场景核心数据文件（如 Android 的 SMS 数据库）
+  - `HIGH` (75)：场景重要辅助文件（如 Android 的联系人数据库）
+  - `MEDIUM` (50)：场景一般相关文件（如 Android 的应用 APK）
+  - `LOW` (25)：场景边缘相关文件（如通用配置文件）
+  - `IRRELEVANT` (0)：与场景无关
+
+- **scene_relevant**（布尔值）：文件是否值得在当前场景下深入分析
+
+这些值存储在 `files` 表的 `scene_type`、`scene_priority`、`scene_relevant` 字段中。
+
+#### 2. LLM 分析阶段
+
+LLM 分析服务根据场景优先级对文件进行排序，优先分析高优先级的场景相关文件：
+
+```
+分析顺序：CRITICAL (100) → HIGH (75) → MEDIUM (50) → LOW (25)
+```
+
+这确保在有限的 LLM 分析时间内，最有价值的场景文件得到优先处理。
+
+#### 3. 制品提取阶段
+
+平台分析器（Android/Windows/Linux/Server）将提取的制品存入场景专属的制品表：
+
+| 场景 | 制品表 | 制品类型 |
+|------|--------|---------|
+| Android | `android_artifacts` | sms, contact, call_log, app_usage, device_info, media |
+| Windows | `windows_artifacts` | registry, event_log, prefetch, browser_history, jump_list |
+| Linux | `linux_artifacts` | system_log, user_account, shell_history, auth_data, cron_job |
+| 服务器/云 | `linux_artifacts` | docker_container, nginx_config, k8s_config, ci_pipeline |
+
+### 查询场景分析结果
+
+通过以下 API 端点查询场景分析结果：
+
+1. **查看场景统计**：`GET /api/tasks/{id}/scene-stats`
+   - 了解各场景的文件分布和 LLM 分析覆盖情况
+
+2. **浏览场景制品**：`GET /api/tasks/{id}/scene-artifacts?scene_type=android`
+   - 分页查看特定场景的所有提取制品
+
+### 最佳实践
+
+1. **明确选择场景**：创建任务时明确指定 `scenarios` 参数，而不是依赖旧版 `android_analyze` 标志
+2. **多场景组合**：对于混合环境（如同时包含 Android 和 Windows 数据的镜像），可同时指定多个场景
+3. **监控 LLM 覆盖**：通过 `scene-stats` 端点检查 `llm_analyzed_files` 与 `relevant_files` 的比率，评估分析覆盖度
+4. **按需查询制品**：使用分页参数 (`limit`/`offset`) 避免一次加载过多制品数据
+
+---
+
 ## 相关文档
 
 - **[Python REST API 参考](./Python_REST_API.md)** - Python 服务 API
 - **[快速入门指南](../getting-started/QuickStart.md)** - 服务启动和使用
 - **[HTTPServer 模块文档](../modules/cpp/network/HTTPServer.md)** - C++ HTTP 服务器架构
 - **[TaskManager 模块文档](../modules/cpp/network/TaskManager.md)** - 任务管理器
+- **[取证场景选择](../features/forensic-scenario-selection.md)** - 场景选择系统详细设计
 
 ---
 
-**最后更新**: 2026-05-19
+**最后更新**: 2026-06-06
 **维护者**: ymj68520
