@@ -308,7 +308,12 @@ void AndroidAnalyzer::analyzeWithLLM() {
         }
 
         forensics::AndroidLLMAnalysisService::AnalysisOptions options;
-        options.maxArtifacts = 1000;
+        // 工件分析上限由 LLM_MAX_ARTIFACTS 控制（0 = 全量），替代原硬编码 1000。
+        auto& llmConfigManager = forensics::ConfigManager::instance();
+        if (!llmConfigManager.isLoaded()) {
+            llmConfigManager.load();
+        }
+        options.maxArtifacts = static_cast<size_t>(llmConfigManager.getLLMMaxArtifacts());
         options.includeMessages = true;
         options.includeContacts = true;
         options.includeMiui = true;

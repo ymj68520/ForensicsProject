@@ -370,6 +370,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         // hardcoded floor of 1000 made real-image tasks run for
                         // many hours on local LLMs.
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
+                        // 候选扫描范围由 LLM_SMART_CANDIDATE_FILES 控制（selectImportantFiles 内部读取），
+                        // 分析数量上限沿用 LLM_MAX_FILES；两者默认 0 = 全量。
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;

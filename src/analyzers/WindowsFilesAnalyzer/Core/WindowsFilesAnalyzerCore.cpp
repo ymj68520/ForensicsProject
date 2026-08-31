@@ -149,7 +149,12 @@ void WindowsFilesAnalyzer::analyzeWithLLM() {
 
         // Configure analysis options for comprehensive coverage
         forensics::WindowsLLMAnalysisService::AnalysisOptions options;
-        options.maxArtifacts = 10000;  // Analyze all artifacts
+        // 工件分析上限由 LLM_MAX_ARTIFACTS 控制（0 = 全量），替代原硬编码 10000。
+        auto& llmConfigManager = forensics::ConfigManager::instance();
+        if (!llmConfigManager.isLoaded()) {
+            llmConfigManager.load();
+        }
+        options.maxArtifacts = static_cast<size_t>(llmConfigManager.getLLMMaxArtifacts());
         options.includeRegistry = true;
         options.includeEventLogs = true;
         options.includePrefetch = true;

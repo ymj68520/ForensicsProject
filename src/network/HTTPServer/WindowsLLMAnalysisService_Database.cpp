@@ -68,7 +68,8 @@ WindowsLLMAnalysisService::getArtifactsFromDatabase(sqlite3* db,
     std::string query = selectSQL;
     size_t pos = query.find("?");
     if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(limit));
+        // limit == 0 表示全量：SQLite 的 LIMIT -1 即不设上限。
+        query.replace(pos, 1, std::to_string(limit == 0 ? -1 : static_cast<long long>(limit)));
     }
 
     sqlite3_stmt* stmt = nullptr;

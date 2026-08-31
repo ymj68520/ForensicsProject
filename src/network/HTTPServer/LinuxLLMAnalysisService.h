@@ -67,7 +67,7 @@ public:
      * @brief Analysis options for Linux artifact analysis
      */
     struct AnalysisOptions {
-        size_t maxArtifacts = 1000;         // Maximum artifacts per type to analyze
+        size_t maxArtifacts = 0;               // Maximum artifacts per type to analyze (0 = 全量, unlimited)
         bool includeLogs = true;            // Analyze system logs
         bool includeUsers = true;           // Analyze user accounts
         bool includeLogins = true;          // Analyze login records

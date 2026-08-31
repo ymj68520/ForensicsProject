@@ -29,7 +29,7 @@ public:
      * @brief Analysis options for LLM file analysis
      */
     struct AnalysisOptions {
-        size_t maxFiles = 1000;              // Maximum files to analyze
+        size_t maxFiles = 0;                 // Maximum files to analyze (0 = 全量, unlimited)
         size_t maxContentLength = 10000;     // Maximum content length per file
         std::vector<std::string> fileTypes;  // File types to analyze (empty = all)
         bool skipBinaryFiles = true;         // Skip binary files

@@ -50,7 +50,7 @@ public:
      * @brief Analysis options for Windows artifact analysis
      */
     struct AnalysisOptions {
-        size_t maxArtifacts = 1000;         // Maximum artifacts per type to analyze
+        size_t maxArtifacts = 0;               // Maximum artifacts per type to analyze (0 = 全量, unlimited)
         bool includeRegistry = true;        // Analyze registry values
         bool includeEventLogs = true;       // Analyze event logs
         bool includePrefetch = true;        // Analyze prefetch files

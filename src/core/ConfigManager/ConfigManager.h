@@ -37,9 +37,11 @@ public:
     std::string getLLMApiKey() const;
     int getLLMTimeoutSeconds() const;
     int getLLMMaxRetries() const;
-    int getLLMMaxFiles() const;
-    // Maximum event clusters for smart LLM analysis; 0 means unlimited.
-    int getLLMMaxEventClusters() const;
+    // LLM 分析数量上限约定：0 = 全量（不截断），负值按 0 处理。
+    int getLLMMaxFiles() const;             // LLM_MAX_FILES：文件级分析上限
+    int getLLMMaxEventClusters() const;     // LLM_MAX_EVENT_CLUSTERS：smart 模式事件簇分析上限
+    int getLLMSmartCandidateFiles() const;  // LLM_SMART_CANDIDATE_FILES：smart 选择阶段的候选文件扫描上限
+    int getLLMMaxArtifacts() const;         // LLM_MAX_ARTIFACTS：平台工件（Android/Linux/Windows）分析上限
     int getLLMMaxContentLength() const;
     bool getLLMSkipBinary() const;
     

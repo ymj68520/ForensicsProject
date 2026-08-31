@@ -134,8 +134,8 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
         return 0;
     }
 
-    // Limit number of files
-    if (files.size() > options.maxFiles) {
+    // 限制分析文件数量（maxFiles == 0 表示全量，不截断）
+    if (options.maxFiles > 0 && files.size() > options.maxFiles) {
         files.resize(options.maxFiles);
     }
 
@@ -244,9 +244,13 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
         }
     }
 
-    // Get all files from database
+    // 候选扫描范围由 LLM_SMART_CANDIDATE_FILES 控制（0 = 全量），替代原先的硬编码扫描上限。
+    auto& configManager = ConfigManager::instance();
+    if (!configManager.isLoaded()) {
+        configManager.load();
+    }
     AnalysisOptions opts;
-    opts.maxFiles = 10000;  // Get more files for smart selection
+    opts.maxFiles = static_cast<size_t>(configManager.getLLMSmartCandidateFiles());
     auto allFiles = getFilesFromDatabase(filesDbPath, opts);
     if (allFiles.empty()) {
         return {};
@@ -294,6 +298,14 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     // Build summary of file list for LLM
     std::string fileListSummary = buildFileListSummary(summaryList);
 
+    // 选择范围的提示文案：maxFiles == 0 表示全量，不出现具体数字上限。
+    const std::string selectionLimitClause = (maxFiles == 0)
+        ? std::string("covering ALL files listed above.")
+        : ("limited to " + std::to_string(maxFiles) + " most important files.");
+
+    // maxFiles == 0（全量）时 fallback 不截断：selectByHeuristic 的预算参数
+    // 取候选总数（传 0 会把列表截成空）。
+    const size_t fallbackBudget = (maxFiles == 0) ? candidates.size() : maxFiles;
     std::string prompt = R"(You are a digital forensics expert. Analyze the following list of files from a forensic disk image and identify the most important files for investigation.
 
 Consider:
@@ -309,7 +321,7 @@ Consider:
 File list:
 )" + fileListSummary + R"(
 
-Return ONLY a JSON array of file paths that should be analyzed, limited to )" + std::to_string(maxFiles) + R"( most important files.
+Return ONLY a JSON array of file paths that should be analyzed, )" + selectionLimitClause + R"(
 Format: ["path1", "path2", ...]
 Do not include any explanation, only the JSON array.)";
 
@@ -319,7 +331,7 @@ Do not include any explanation, only the JSON array.)";
         if (!response.success) {
             std::cerr << "LLM request failed: " << response.errorMessage
                       << " — falling back to heuristic file selection" << std::endl;
-            return selectByHeuristic(candidates, maxFiles);
+            return selectByHeuristic(candidates, fallbackBudget);
         }
 
         auto selected = parseImportantFiles(response.content, allFiles);
@@ -329,13 +341,13 @@ Do not include any explanation, only the JSON array.)";
             std::cerr << "LLM selection returned only " << selected.size()
                       << " usable paths (budget " << maxFiles
                       << ") — falling back to heuristic file selection" << std::endl;
-            return selectByHeuristic(candidates, maxFiles);
+            return selectByHeuristic(candidates, fallbackBudget);
         }
         return selected;
     } catch (const std::exception& e) {
         std::cerr << "Failed to select important files: " << e.what()
                   << " — falling back to heuristic file selection" << std::endl;
-        return selectByHeuristic(candidates, maxFiles);
+        return selectByHeuristic(candidates, fallbackBudget);
     }
 }
 
@@ -476,7 +488,10 @@ std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::str
         }
     }
 
-    sql += " LIMIT " + std::to_string(options.maxFiles);
+    // maxFiles == 0 表示全量（不追加 LIMIT 子句）
+    if (options.maxFiles > 0) {
+        sql += " LIMIT " + std::to_string(options.maxFiles);
+    }
 
     sqlite3_stmt* stmt = nullptr;
     rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);

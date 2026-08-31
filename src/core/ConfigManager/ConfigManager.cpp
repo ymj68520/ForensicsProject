@@ -88,11 +88,13 @@ std::string ConfigManager::getLLMEndpoint() const { return get("LLM_ENDPOINT", "
 std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", ""); }
 int ConfigManager::getLLMTimeoutSeconds() const { return getInt("LLM_TIMEOUT_SECONDS", 120); }
 int ConfigManager::getLLMMaxRetries() const { return getInt("LLM_MAX_RETRIES", 3); }
-int ConfigManager::getLLMMaxFiles() const { return getInt("LLM_MAX_FILES", 500); }
-int ConfigManager::getLLMMaxEventClusters() const {
-    const int value = getInt("LLM_MAX_EVENT_CLUSTERS", 0);
-    return value > 0 ? value : 0;
-}
+// 上限约定：0 = 全量（不截断）；负配置值按 0（全量）处理。
+// LLM_MAX_FILES 默认 500：全量默认在真实镜像上会让 LLM 阶段分析数万文件
+// （本地 LLM 需数小时到数天），必须显式配置才会放开。
+int ConfigManager::getLLMMaxFiles() const { return std::max(0, getInt("LLM_MAX_FILES", 500)); }
+int ConfigManager::getLLMMaxEventClusters() const { return std::max(0, getInt("LLM_MAX_EVENT_CLUSTERS", 0)); }
+int ConfigManager::getLLMSmartCandidateFiles() const { return std::max(0, getInt("LLM_SMART_CANDIDATE_FILES", 0)); }
+int ConfigManager::getLLMMaxArtifacts() const { return std::max(0, getInt("LLM_MAX_ARTIFACTS", 0)); }
 int ConfigManager::getLLMMaxContentLength() const { return getInt("LLM_MAX_CONTENT_LENGTH", 10000); }
 bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY", true); }
 

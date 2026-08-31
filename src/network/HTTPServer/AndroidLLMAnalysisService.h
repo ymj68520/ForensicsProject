@@ -54,7 +54,7 @@ public:
      * @brief Analysis options for Android artifact analysis
      */
     struct AnalysisOptions {
-        size_t maxArtifacts = 1000;            // Maximum artifacts per type to analyze
+        size_t maxArtifacts = 0;               // Maximum artifacts per type to analyze (0 = 全量, unlimited)
         bool includeMessages = true;           // SMS / WeChat / WhatsApp / Telegram
         bool includeContacts = true;           // contacts + call logs
         bool includeMiui = true;               // backup manifest + installed apps
