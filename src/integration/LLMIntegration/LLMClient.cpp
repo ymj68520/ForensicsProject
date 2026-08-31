@@ -126,6 +126,13 @@ void LLMClient::initHttpClient() {
     httpClient_->set_connection_timeout(config_.timeoutSeconds);
     httpClient_->set_read_timeout(config_.timeoutSeconds);
     httpClient_->set_write_timeout(config_.timeoutSeconds);
+    // 护栏：endpoint 是 API 路径。误填模型名/URL 会让每个请求打到无效路径，
+    // 兼容服务器常以直接断连代替 404，表象是 "Failed to read connection"。
+    if (!config_.endpoint.empty() && config_.endpoint[0] != '/') {
+        std::cerr << "[LLMClient] Warning: endpoint \"" << config_.endpoint
+                  << "\" does not start with '/'. Expected an API path such as"
+                  << " /v1/chat/completions — check LLM_ENDPOINT in .env." << std::endl;
+    }
     ready_ = true;
 }
 
@@ -181,6 +188,11 @@ LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
         
         if (!res) {
             lastError_ = "Request failed: " + httplib::to_string(res.error());
+            // 诊断日志：帮助区分连接被拒、读超时、大 body 被服务端重置等问题
+            std::cerr << "[LLMClient] " << config_.model << " POST " << config_.endpoint
+                      << " failed (" << httplib::to_string(res.error())
+                      << ", body=" << requestBody.size() << " bytes, thread="
+                      << std::this_thread::get_id() << ")" << std::endl;
             retries++;
             if (retries <= config_.maxRetries) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500 * retries));

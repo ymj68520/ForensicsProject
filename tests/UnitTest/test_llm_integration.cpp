@@ -17,8 +17,9 @@ using namespace forensics::llm;
 
 TEST(LLMDataTypesTest, LLMConfigDefaults) {
     LLMConfig config;
-    
-    EXPECT_EQ(config.baseUrl, "http://localhost:1234");
+
+    // 6ae1c12 将默认端点从 localhost 迁移到局域网推理服务器。
+    EXPECT_EQ(config.baseUrl, "http://192.168.31.170:1234");
     EXPECT_EQ(config.endpoint, "/v1/chat/completions");
     EXPECT_EQ(config.maxTokens, 2048);
     EXPECT_DOUBLE_EQ(config.temperature, 0.7);
