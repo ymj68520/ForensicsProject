@@ -119,10 +119,14 @@ def create_app() -> FastAPI:
     )
 
     # CORS middleware - allows the configured web UI origins to call the API.
+    # Starlette 在 allow_origins 含 "*" 时与 allow_credentials=True 互斥
+    # （会拒绝所有来源的预检）。本服务认证走 localStorage + Bearer 头，
+    # 不依赖 Cookie，通配时关闭 credentials 即可。
+    _wildcard_origins = "*" in settings.CORS_ORIGINS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
+        allow_credentials=not _wildcard_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )

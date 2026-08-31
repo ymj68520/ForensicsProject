@@ -10,10 +10,63 @@ singleton rather than reading ``os.getenv`` directly, so the source of truth
 stays in one place. Defaults are tuned for local development; production
 deployments override values through environment variables.
 """
+import json
 import os
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def find_env_file() -> Optional[Path]:
+    """从当前目录向上查找项目 .env（与 httpserver.config.find_env_file 一致）。
+
+    server 常从 python_service/ 目录启动，写死的 ".env" 相对路径会找不到
+    项目根的 .env，导致 DATABASE_URL 等静默落到开发默认值。
+    """
+    current = Path.cwd()
+    while current != current.parent:
+        env_path = current / ".env"
+        if env_path.exists():
+            return env_path
+        current = current.parent
+    return None
+
+
+def _read_env_value(env_path: Optional[Path], key: str) -> str:
+    if env_path is None:
+        return ""
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def _cors_origins_from_env() -> List[str]:
+    """解析 PYTHON_CORS_ORIGINS（JSON 数组），与 httpserver 行为一致。
+
+    生产 Web UI 由 C++ 服务(:8666)托管，浏览器跨源直连本服务；若只白名单
+    Vite 开发端口，预检会被拒（"Disallowed CORS origin"）。
+    """
+    raw = os.getenv("PYTHON_CORS_ORIGINS", "").strip() or _read_env_value(
+        find_env_file(), "PYTHON_CORS_ORIGINS"
+    ).strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list) and all(isinstance(o, str) for o in parsed):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ]
 
 
 class Settings(BaseSettings):
@@ -57,11 +110,7 @@ class Settings(BaseSettings):
     CLIENT_TOKEN_EXPIRE_DAYS: int = 30
 
     # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-    ]
+    CORS_ORIGINS: List[str] = _cors_origins_from_env()
 
     # File Upload
     MAX_UPLOAD_SIZE: int = 5 * 1024 * 1024 * 1024  # 5GB
@@ -85,7 +134,7 @@ class Settings(BaseSettings):
     # (unlike keys from os.environ, which it silently ignores), so without
     # this the server fails to boot whenever the shared .env is present.
     # Mirror httpserver/config.py's own extra="ignore".
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(env_file=find_env_file(), case_sensitive=True, extra="ignore")
 
 
 settings = Settings()
