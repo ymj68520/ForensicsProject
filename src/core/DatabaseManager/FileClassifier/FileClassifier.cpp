@@ -67,6 +67,13 @@ bool FileClassifier::openDatabases() {
 		return false;
 	}
 
+	// classifyFiles() 从源库读取 partition_num（COALESCE 兜底 NULL，但列本身
+	// 必须存在）。partition-aware 之前的旧源库缺该列，这里做与输出库相同的
+	// 加列迁移；已含该列时报告 duplicate-column 错误，属预期，忽略即可。
+	sqlite3_exec(sourceDb_,
+		"ALTER TABLE files ADD COLUMN partition_num INTEGER DEFAULT 0;",
+		nullptr, nullptr, nullptr);
+
 	// Apply write-performance pragmas to the output database. Without these,
 	// SQLite defaults to journal_mode=DELETE + synchronous=FULL, which forces
 	// an fsync (jbd2_log_wait_commit) on every transaction commit. On a real
