@@ -26,7 +26,7 @@ const Layout = ({ children }) => {
     { name: t('nav.cases'), href: '/cases', icon: Briefcase },
     { name: t('nav.timeline'), href: '/timeline', icon: Clock },
     { name: t('nav.files'), href: '/files', icon: FolderOpen },
-    { name: '证据研判', href: '/case-intelligence', icon: FileText },
+    { name: t('nav.case_intelligence'), href: '/case-intelligence', icon: FileText },
     { name: t('nav.case_center'), href: '/analysis-center', icon: FileText },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.investigation_graph'), href: '/investigation-graph', icon: FileSearch },
