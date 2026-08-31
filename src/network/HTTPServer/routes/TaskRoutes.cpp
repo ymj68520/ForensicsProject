@@ -18,29 +18,8 @@ TaskRoutes::TaskRoutes(crow::App<>& app)
 }
 
 void TaskRoutes::register_cors_handlers(crow::App<>& app) {
-    // CORS OPTIONS handlers for /tasks routes
-    CROW_ROUTE(app, "/tasks").methods("OPTIONS"_method)([](const crow::request& req){
-        crow::response res;
-        RouteHelpers::RouteHelpers::add_cors_headers(res);
-        res.code = 204;
-        return res;
-    });
-
-    CROW_ROUTE(app, "/tasks/<string>").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
-        crow::response res;
-        RouteHelpers::add_cors_headers(res);
-        res.code = 204;
-        return res;
-    });
-
-    CROW_ROUTE(app, "/tasks/<string>/results").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
-        crow::response res;
-        RouteHelpers::add_cors_headers(res);
-        res.code = 204;
-        return res;
-    });
-
     // CORS OPTIONS handlers for /api/tasks routes
+    // （任务 API 只保留 /api 前缀路径，与 SPA 的 /tasks 页面路径不冲突）
     CROW_ROUTE(app, "/api/tasks/<string>/results").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
         crow::response res;
         RouteHelpers::add_cors_headers(res);

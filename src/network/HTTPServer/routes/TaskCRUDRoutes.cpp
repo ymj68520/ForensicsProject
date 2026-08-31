@@ -11,12 +11,13 @@ namespace forensics {
 using json = nlohmann::json;
 
 TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
-    // Basic task management routes
-    CROW_ROUTE(app, "/tasks").methods("GET"_method)([this](const crow::request& req) {
+    // 任务 API 只注册 /api 前缀路径：非前缀的遗留路由会把 SPA 的
+    // /tasks 页面路径遮蔽成 JSON，导致浏览器刷新该页时拿不到前端。
+    CROW_ROUTE(app, "/api/tasks").methods("GET"_method)([this](const crow::request& req) {
         return handle_list_tasks(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/tasks", "GET",
+        "/api/tasks", "GET",
         "List tasks",
         "List all analysis tasks with optional filtering.",
         {"Tasks"},
@@ -29,47 +30,6 @@ TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::in
         {{200, "List of tasks"}}
     );
 
-    CROW_ROUTE(app, "/tasks").methods("POST"_method)([this](const crow::request& req) {
-        return handle_create_task(req);
-    });
-    Swagger::instance().RegisterEndpoint(
-        "/tasks", "POST",
-        "Create task",
-        "Create a new forensic analysis task.",
-        {"Tasks"},
-        {},
-        {{201, "Task created"}, {400, "Invalid request"}}
-    );
-
-    CROW_ROUTE(app, "/tasks/<string>").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
-        return handle_get_task(req, task_id);
-    });
-    Swagger::instance().RegisterEndpoint(
-        "/tasks/{id}", "GET",
-        "Get task details",
-        "Retrieve the status and details of a specific task.",
-        {"Tasks"},
-        {{"id", "path", "Task ID", true}},
-        {{200, "Task details"}, {404, "Task not found"}}
-    );
-
-    CROW_ROUTE(app, "/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
-        return handle_get_task_results(req, task_id);
-    });
-    Swagger::instance().RegisterEndpoint(
-        "/tasks/{id}/results", "GET",
-        "Get task results",
-        "Retrieve the results of a completed task.",
-        {"Tasks"},
-        {{"id", "path", "Task ID", true}},
-        {{200, "Task results"}, {202, "Task in progress"}, {404, "Task not found"}}
-    );
-
-    // API variants
-    CROW_ROUTE(app, "/api/tasks").methods("GET"_method)([this](const crow::request& req) {
-        return handle_list_tasks(req);
-    });
-
     CROW_ROUTE(app, "/api/tasks/list").methods("GET"_method)([this](const crow::request& req) {
         return handle_list_tasks(req);
     });
@@ -77,14 +37,38 @@ TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::in
     CROW_ROUTE(app, "/api/tasks").methods("POST"_method)([this](const crow::request& req) {
         return handle_create_task(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks", "POST",
+        "Create task",
+        "Create a new forensic analysis task.",
+        {"Tasks"},
+        {},
+        {{201, "Task created"}, {400, "Invalid request"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task_results(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/results", "GET",
+        "Get task results",
+        "Retrieve the results of a completed task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task results"}, {202, "Task in progress"}, {404, "Task not found"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/<string>").methods("GET"_method, "PUT"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}", "GET",
+        "Get task details",
+        "Retrieve the status and details of a specific task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task details"}, {404, "Task not found"}}
+    );
 
     // Delete task
     CROW_ROUTE(app, "/api/tasks/<string>").methods("DELETE"_method)([this](const crow::request& req, const std::string& task_id) {
