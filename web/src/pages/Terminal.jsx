@@ -3,10 +3,10 @@ import TerminalOutput from '../components/common/TerminalOutput';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
-import { CPP_BASE_URL, PYTHON_BASE_URL } from '../services/api';
+import { CPP_BASE_URL, PYTHON_API_BASE_URL } from '../services/api';
 
 const CPP_BASE = CPP_BASE_URL;
-const PYTHON_BASE = PYTHON_BASE_URL;
+const PYTHON_BASE = PYTHON_API_BASE_URL;
 const CPP_PORT = new URL(CPP_BASE, window.location.origin).port || '80';
 const PYTHON_PORT = new URL(PYTHON_BASE, window.location.origin).port || '80';
 
