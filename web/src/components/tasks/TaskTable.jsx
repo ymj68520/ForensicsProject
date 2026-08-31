@@ -7,6 +7,7 @@
 import { Link } from 'react-router-dom';
 import Badge from '../common/Badge';
 import ProgressBar from '../common/ProgressBar';
+import { useTranslation } from '../../hooks/useTranslation';
 import { TASK_STATUS, TASK_PRIORITY, STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
 
 /** Helper: convert timestamp (ms or s) to locale string */
@@ -74,6 +75,7 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
 }
 
 export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskCaseMap = {}, selectedTaskIds, onToggleSelect, onToggleSelectAll }) {
+  const { t } = useTranslation();
   // Multi-select is opt-in: only rendered when selectedTaskIds is provided.
   const selectable = Array.isArray(selectedTaskIds) || selectedTaskIds instanceof Set;
   const isSel = (id) => selectable && (selectedTaskIds.has ? selectedTaskIds.has(id) : selectedTaskIds.includes(id));
@@ -152,11 +154,14 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               <td className="px-4 py-4 whitespace-nowrap leading-tight">
                 <div className="flex flex-col space-y-1">
                   <div className="flex items-center text-[10px] text-slate-400">
-                    <span className="w-8 uppercase">Start:</span>
+                    <span className="w-24 uppercase shrink-0">Start:</span>
                     <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.created)}</span>
                   </div>
                   <div className="flex items-center text-[10px] text-slate-400">
-                    <span className="w-8 uppercase">End:</span>
+                    {/* 被服务重启中断的任务，完成时间只是中断时刻，以"中断于"语义展示 */}
+                    <span className="w-24 uppercase shrink-0">
+                      {task.interrupted_by_restart ? t('task.interruptedAt') : 'End:'}
+                    </span>
                     <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.completed)}</span>
                   </div>
                 </div>

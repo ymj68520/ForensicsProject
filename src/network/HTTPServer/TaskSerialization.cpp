@@ -83,6 +83,7 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["xfs_mode"] = t.xfs_mode;
     j["db_output_dir"] = t.db_output_dir;
     j["error_details"] = t.error_details;
+    j["interrupted_by_restart"] = t.interrupted_by_restart;
     j["metadata"] = t.metadata;
     j["llm_analyze"] = t.llm_analyze;
     j["llm_mode"] = t.llm_mode;
@@ -136,6 +137,7 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("xfs_mode")) j.at("xfs_mode").get_to(t.xfs_mode);
     if(j.contains("db_output_dir")) j.at("db_output_dir").get_to(t.db_output_dir);
     if(j.contains("error_details")) j.at("error_details").get_to(t.error_details);
+    if(j.contains("interrupted_by_restart")) j.at("interrupted_by_restart").get_to(t.interrupted_by_restart);
     if(j.contains("metadata")) j.at("metadata").get_to(t.metadata);
     if(j.contains("llm_analyze")) j.at("llm_analyze").get_to(t.llm_analyze);
     if(j.contains("llm_mode")) j.at("llm_mode").get_to(t.llm_mode);

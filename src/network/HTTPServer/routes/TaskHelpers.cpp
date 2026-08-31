@@ -26,8 +26,12 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
 
     long long execution_time_seconds = 0;
     if (task.status == TaskStatus::COMPLETED || task.status == TaskStatus::FAILED) {
-        execution_time_seconds = std::chrono::duration_cast<std::chrono::seconds>(
-            task.completed_time - task.started_time).count();
+        // 被重启中断的任务 completed_time 只是中断时刻，跨_restart 的
+        // "时长"没有意义，置 0 避免前端呈现虚假运行时间。
+        if (!task.interrupted_by_restart) {
+            execution_time_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                task.completed_time - task.started_time).count();
+        }
     }
 
     // Build scenario_databases map
@@ -60,6 +64,7 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"status", status_to_string(task.status)},
         {"priority", priority_to_string(task.priority)},
         {"message", task.message},
+        {"interrupted_by_restart", task.interrupted_by_restart},
         {"output_files_db", task.output_files_db},
         {"output_raw_db", task.output_raw_db},
         {"output_events_db", task.output_events_db},

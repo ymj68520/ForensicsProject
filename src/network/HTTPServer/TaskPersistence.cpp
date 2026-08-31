@@ -56,9 +56,17 @@ void TaskPersistence::load_tasks(
                 task.status = TaskStatus::FAILED;
                 task.message = "Interrupted by server restart";
                 task.error_details = "The server was restarted while this task was in queue or running. Please delete and recreate if necessary.";
+                task.interrupted_by_restart = true;
 
-                // Reset timestamps to current for visibility
+                // completed_time 记录的是"系统中断于该时刻"（非任务真实运行
+                // 时长终点），前端据此以"中断于"语义展示。
                 task.completed_time = std::chrono::system_clock::now();
+            } else if (task.status == TaskStatus::FAILED && !task.interrupted_by_restart
+                       && (task.message.find("Interrupted by server restart") != std::string::npos
+                           || task.error_details.find("The server was restarted") != std::string::npos)) {
+                // 历史兼容：加标记字段之前被重启中断的任务没有持久化该标志，
+                // 依据恢复逻辑写入的特征文案补记，保证前端统一按"中断于"展示。
+                task.interrupted_by_restart = true;
             }
 
             tasks[task.id] = task;

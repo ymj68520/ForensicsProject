@@ -133,6 +133,9 @@ struct AnalysisTask {
     std::string db_output_dir;
     std::atomic<bool> cancellation_requested{false};
     std::string error_details;
+    // 服务重启时任务处于 PENDING/RUNNING 而被标记为失败。此时 completed_time
+    // 只表示"系统中断于该时刻"，不是任务实际运行的结束时间，前端按此区分展示。
+    bool interrupted_by_restart = false;
     std::map<std::string, std::string> metadata;
 
     // LLM analysis options
@@ -178,7 +181,7 @@ struct AnalysisTask {
           xfs_mode(other.xfs_mode),
           db_output_dir(other.db_output_dir),
           cancellation_requested(other.cancellation_requested.load()),
-          error_details(other.error_details), metadata(other.metadata),
+          error_details(other.error_details), interrupted_by_restart(other.interrupted_by_restart), metadata(other.metadata),
           llm_analyze(other.llm_analyze), llm_mode(other.llm_mode),
           output_descriptions_db(other.output_descriptions_db),
           case_description(other.case_description),
@@ -215,6 +218,7 @@ struct AnalysisTask {
             db_output_dir = other.db_output_dir;
             cancellation_requested.store(other.cancellation_requested.load());
             error_details = other.error_details;
+            interrupted_by_restart = other.interrupted_by_restart;
             metadata = other.metadata;
             llm_analyze = other.llm_analyze;
             llm_mode = other.llm_mode;
@@ -246,7 +250,7 @@ struct AnalysisTask {
           xfs_mode(other.xfs_mode),
           db_output_dir(std::move(other.db_output_dir)),
           cancellation_requested(other.cancellation_requested.load()),
-          error_details(std::move(other.error_details)), metadata(std::move(other.metadata)),
+          error_details(std::move(other.error_details)), interrupted_by_restart(other.interrupted_by_restart), metadata(std::move(other.metadata)),
           llm_analyze(other.llm_analyze), llm_mode(std::move(other.llm_mode)),
           output_descriptions_db(std::move(other.output_descriptions_db)),
           case_description(std::move(other.case_description)),
@@ -283,6 +287,7 @@ struct AnalysisTask {
             db_output_dir = std::move(other.db_output_dir);
             cancellation_requested.store(other.cancellation_requested.load());
             error_details = std::move(other.error_details);
+            interrupted_by_restart = other.interrupted_by_restart;
             metadata = std::move(other.metadata);
             llm_analyze = other.llm_analyze;
             llm_mode = std::move(other.llm_mode);
