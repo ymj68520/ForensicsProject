@@ -38,6 +38,15 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+@lru_cache()
+def get_data_root() -> Path:
+    """Return the absolute runtime data root used by all Python services."""
+    configured = Path(get_settings().data_dir).expanduser()
+    if configured.is_absolute():
+        return configured
+    return get_project_root() / configured
+
+
 class LLMFilterConfig(BaseModel):
     """Configuration for LLM file filtering enhancements."""
 
@@ -218,10 +227,19 @@ class Settings(BaseSettings):
         default="1.0.0", alias="FORENSIC_REPORT_GENERATOR_VERSION"
     )
 
+    # Finite analysis limits. Explicit values may raise these within the
+    # declared bounds; an omitted value never means unlimited.
+    llm_max_files: int = Field(default=500, ge=1, le=100000, alias="LLM_MAX_FILES")
+    llm_smart_candidate_files: int = Field(default=1000, ge=1, le=100000, alias="LLM_SMART_CANDIDATE_FILES")
+    llm_max_event_clusters: int = Field(default=200, ge=1, le=100000, alias="LLM_MAX_EVENT_CLUSTERS")
+    llm_max_artifacts: int = Field(default=500, ge=1, le=100000, alias="LLM_MAX_ARTIFACTS")
+    investigation_max_nodes: int = Field(default=200, ge=1, le=10000, alias="INVESTIGATION_MAX_NODES")
+    multi_image_max_filter_files: int = Field(default=400, ge=1, le=20000, alias="MULTI_IMAGE_MAX_FILTER_FILES")
+
     # File Analysis Settings
-    file_analysis_max_content: int = Field(default=10000, alias="FILE_ANALYSIS_MAX_CONTENT")
-    file_analysis_max_keywords: int = Field(default=10, alias="FILE_ANALYSIS_MAX_KEYWORDS")
-    file_analysis_max_content_limit: int = Field(default=12000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
+    file_analysis_max_content: int = Field(default=10000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT")
+    file_analysis_max_keywords: int = Field(default=10, ge=1, le=1000, alias="FILE_ANALYSIS_MAX_KEYWORDS")
+    file_analysis_max_content_limit: int = Field(default=50000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
     
     # Logging Settings
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

@@ -12,6 +12,7 @@ import time
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from enum import Enum
+from ...config import get_data_root, get_project_root, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -384,8 +385,7 @@ def get_case_db_path(case_id: str, base_dir: str = None) -> str:
         Path to the case database file
     """
     if base_dir is None:
-        # Use default location relative to project root
-        base_dir = "build/data/cases"
+        base_dir = get_data_root() / "cases"
 
     case_dir = Path(base_dir) / case_id
     case_dir.mkdir(parents=True, exist_ok=True)

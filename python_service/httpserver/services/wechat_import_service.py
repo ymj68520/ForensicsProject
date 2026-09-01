@@ -29,9 +29,10 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config import get_project_root
+from ..config import get_data_root, get_project_root, get_settings
 from . import wechat_decrypt
 
 logger = logging.getLogger(__name__)
@@ -73,9 +74,10 @@ _APPMSG_SUBTYPE_LABELS = {
 
 
 def import_root() -> str:
-    root = os.path.join(str(get_project_root()), "build", "data", IMPORT_ROOT_NAME)
-    os.makedirs(root, exist_ok=True)
-    return root
+    data_root = get_data_root()
+    root = data_root / IMPORT_ROOT_NAME
+    root.mkdir(parents=True, exist_ok=True)
+    return str(root)
 
 
 def _import_dir(import_id: str) -> str:

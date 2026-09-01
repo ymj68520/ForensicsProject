@@ -34,8 +34,10 @@ import shutil
 import sqlite3
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..config import get_data_root, get_project_root, get_settings
 from . import qq_decrypt
 
 logger = logging.getLogger(__name__)
@@ -73,9 +75,9 @@ QQ_OUTER_LABELS = {
 # ---------------------------------------------------------------------- #
 
 def import_root() -> str:
-    root = os.path.join(PROJECT_ROOT, "build", "data", "qq_imports")
-    os.makedirs(root, exist_ok=True)
-    return root
+    root = get_data_root() / "qq_imports"
+    root.mkdir(parents=True, exist_ok=True)
+    return str(root)
 
 
 def _import_dir(import_id: str) -> str:
