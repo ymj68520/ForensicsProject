@@ -170,6 +170,22 @@ async def _resolve_android_db_path(task_id: str) -> str:
                    "POST /api/wechat/forensics/imports first.",
         )
 
+    # QQ forensics import shortcut: qq_<import_id>
+    if task_id.startswith("qq_"):
+        from ..services.qq_import_service import get_qq_import_service
+        service = get_qq_import_service()
+        try:
+            db_path = service._graph_db_path(task_id[3:])
+        except ValueError:
+            db_path = ""
+        if db_path and os.path.exists(db_path):
+            return db_path
+        raise HTTPException(
+            status_code=404,
+            detail=f"QQ import {task_id} not found. Create it via "
+                   "POST /api/qq/forensics/imports first.",
+        )
+
     from ..services import get_service_manager
     service_manager = get_service_manager()
 

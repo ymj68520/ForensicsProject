@@ -14,6 +14,7 @@ export default {
     'nav.knowledge_graph': '知识图谱',
     'nav.android': '安卓取证',
     'nav.wechat_forensics': '微信取证',
+    'nav.qq_forensics': 'QQ 取证',
     'nav.wechat_graph': '微信关系分析',
     'nav.oss_analysis': 'OSS 分析',
     'nav.memory': '内存取证',

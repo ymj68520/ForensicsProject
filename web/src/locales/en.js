@@ -14,6 +14,7 @@ export default {
     'nav.knowledge_graph': 'Knowledge Graph',
     'nav.android': 'Android',
     'nav.wechat_forensics': 'WeChat Forensics',
+    'nav.qq_forensics': 'QQ Forensics',
     'nav.wechat_graph': 'WeChat Graph',
     'nav.oss_analysis': 'OSS Analysis',
     'nav.memory': 'Memory',

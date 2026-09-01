@@ -23,6 +23,7 @@ _ROUTE_MODULES = frozenset(
         "oss_analysis",
         "multi_analysis",
         "dll",
+        "qq_forensics",
     }
 )
 
