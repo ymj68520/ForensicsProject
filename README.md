@@ -164,18 +164,22 @@ make acceptance-smoke
 
 ## 配置
 
-配置集中于仓库根 `.env`（参考 [.env.example](.env.example)，C++ 由 ConfigManager 经 cpp-dotenv 读取，Python 由 pydantic-settings 读取）。关键变量：
+配置集中于仓库根 `.env`（参考 [.env.example](.env.example)，C++ 由 ConfigManager 经 cpp-dotenv 读取，Python 由 pydantic-settings 读取）。启动脚本、Vite 代理和前端运行时使用同一组服务端口变量：`HTTP_SERVER_*`、`PYTHON_HTTP_*`、`CS_*`。显式环境变量优先于 `.env`，`.env` 优先于代码默认值；Vite 客户端只注入 `VITE_*` 或由 `vite.config.js` 显式转换的变量。
+
+安全提示：`JWT_SECRET_KEY` 若未显式设置会回退到不安全的开发默认值，生产环境必须注入随机、唯一的密钥。`LLM_BASE_URL`、`LLM_TEXT_BASE_URL` 和 `LLM_VISION_BASE_URL` 指向的服务会接收取证内容；生产环境应配置经过授权的 HTTPS endpoint，并确认数据外发符合案件和组织要求。
+
+关键变量：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `HTTP_SERVER_PORT` | 8080 | C++ 服务端口（run.sh 未设置时回退 8666） |
+| `HTTP_SERVER_PORT` | 8080 | C++ 服务端口 |
 | `PYTHON_HTTP_PORT` | 8090 | Python 分析服务端口 |
-| `PORT` | 8091 | 分布式 C/S 服务端口 |
-| `LLM_BASE_URL` / `LLM_TEXT_MODEL` | `http://192.168.31.170:1234` / `qwen/qwen3.6-35b-a3b` | OpenAI 兼容端点与模型 |
+| `CS_PORT` | 8091 | 分布式 C/S 服务端口（canonical；`PORT` 仅兼容回退） |
+| `LLM_BASE_URL` / `LLM_TEXT_MODEL` | 配置中的 LLM endpoint / 模型 | OpenAI 兼容端点与模型 |
 | `NEO4J_URI` / `NEO4J_PASSWORD` | `neo4j://127.0.0.1:7687` / change-me | Graphiti 图谱后端 |
 | `DATABASE_URL` | `postgresql://...` | C/S 服务端 PostgreSQL |
 | `THREAD_POOL_SIZE` | 4 | C++ 分析线程池 |
-| `LLM_MAX_EVENT_CLUSTERS` | 0（不限） | 事件簇 LLM 分析上限 |
+| `LLM_MAX_FILES` / `LLM_MAX_EVENT_CLUSTERS` | 有限默认值 | LLM 文件/事件簇分析上限；显式设置 0 才启用无限模式 |
 
 Graphiti 全功能需 LLM 服务同时加载 `openai/gpt-oss-20b` 与 `text-embedding-nomic-embed-text-v1.5`。
 

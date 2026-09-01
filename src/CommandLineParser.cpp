@@ -1,4 +1,5 @@
 #include "CommandLineParser.h"
+#include "ConfigManager/ConfigManager.h"
 #include <charconv>
 #include <cctype>
 #include <filesystem>
@@ -186,7 +187,7 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
                 std::cerr << "Valid options: auto, native, pure" << std::endl;
             }
         } else if (arg == "--http-server") {
-            args.http_port = 8080;
+            args.http_port = forensics::ConfigManager::instance().getHTTPServerPort();
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 args.http_port = std::stoi(argv[++i]);
             }
