@@ -99,8 +99,10 @@ class FakeCppBackend:
         self._task_id = task_id
         self._task_dir = str(task_dir)
         self.get_task_call_count = 0
+        # The restart-recovery sweep reads timeout settings off the backend.
+        self.settings = Mock(cpp_recovery_timeout=8.0)
 
-    async def get_task(self, task_id):
+    async def get_task(self, task_id, **kwargs):
         self.get_task_call_count += 1
         if task_id != self._task_id:
             return None
@@ -110,7 +112,7 @@ class FakeCppBackend:
             "output_events_db": str(Path(self._task_dir) / "events.db"),
         }
 
-    async def list_tasks(self, page=1, page_size=100, status=None):
+    async def list_tasks(self, page=1, page_size=100, status=None, **kwargs):
         return {"tasks": [{
             "id": self._task_id,
         }]}
