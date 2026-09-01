@@ -66,6 +66,9 @@ public:
     std::string getHTTPServerHost() const;
     std::string getPythonServiceUrl() const;
     std::string getMCPHost() const;
+    std::vector<std::string> getMCPAllowedPaths() const;
+    int getMCPMaxReadBytes() const;
+    int getMCPMaxListEntries() const;
     
     // --- Database Settings ---
     int getDBBusyTimeoutMs() const;

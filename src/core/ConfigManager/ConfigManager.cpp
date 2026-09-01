@@ -88,14 +88,25 @@ std::string ConfigManager::getLLMEndpoint() const { return get("LLM_ENDPOINT", "
 std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", ""); }
 int ConfigManager::getLLMTimeoutSeconds() const { return getInt("LLM_TIMEOUT_SECONDS", 120); }
 int ConfigManager::getLLMMaxRetries() const { return getInt("LLM_MAX_RETRIES", 3); }
-// 上限约定：0 = 全量（不截断）；负配置值按 0（全量）处理。
-// LLM_MAX_FILES 默认 500：全量默认在真实镜像上会让 LLM 阶段分析数万文件
-// （本地 LLM 需数小时到数天），必须显式配置才会放开。
-int ConfigManager::getLLMMaxFiles() const { return std::max(0, getInt("LLM_MAX_FILES", 500)); }
-int ConfigManager::getLLMMaxEventClusters() const { return std::max(0, getInt("LLM_MAX_EVENT_CLUSTERS", 0)); }
-int ConfigManager::getLLMSmartCandidateFiles() const { return std::max(0, getInt("LLM_SMART_CANDIDATE_FILES", 0)); }
-int ConfigManager::getLLMMaxArtifacts() const { return std::max(0, getInt("LLM_MAX_ARTIFACTS", 0)); }
-int ConfigManager::getLLMMaxContentLength() const { return getInt("LLM_MAX_CONTENT_LENGTH", 10000); }
+namespace {
+
+int bounded_limit(const ConfigManager& config, const char* key, int defaultValue,
+                  int maximum) {
+    const std::string raw = config.get(key, "");
+    if (raw == "0") return 0;  // Unlimited is explicit opt-in only.
+    const int value = raw.empty() ? defaultValue : config.getInt(key, defaultValue);
+    return std::clamp(value, 1, maximum);
+}
+
+}  // namespace
+
+// All analysis stages have finite defaults. A larger workload requires an
+// explicit configuration value; zero is retained only as an explicit opt-in.
+int ConfigManager::getLLMMaxFiles() const { return bounded_limit(*this, "LLM_MAX_FILES", 500, 100000); }
+int ConfigManager::getLLMMaxEventClusters() const { return bounded_limit(*this, "LLM_MAX_EVENT_CLUSTERS", 200, 100000); }
+int ConfigManager::getLLMSmartCandidateFiles() const { return bounded_limit(*this, "LLM_SMART_CANDIDATE_FILES", 1000, 100000); }
+int ConfigManager::getLLMMaxArtifacts() const { return bounded_limit(*this, "LLM_MAX_ARTIFACTS", 500, 100000); }
+int ConfigManager::getLLMMaxContentLength() const { return bounded_limit(*this, "LLM_MAX_CONTENT_LENGTH", 10000, 1000000); }
 bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY", true); }
 
 // Text Model Settings
@@ -142,7 +153,28 @@ int ConfigManager::getMaxBatchSize() const { return getInt("MAX_BATCH_SIZE", 100
 int ConfigManager::getHTTPServerPort() const { return getInt("HTTP_SERVER_PORT", 8080); }
 std::string ConfigManager::getHTTPServerHost() const { return get("HTTP_SERVER_HOST", "0.0.0.0"); }
 std::string ConfigManager::getPythonServiceUrl() const { return get("PYTHON_SERVICE_URL", "http://localhost:" + std::to_string(getInt("PYTHON_HTTP_PORT", 8090))); }
-std::string ConfigManager::getMCPHost() const { return get("MCP_HOST", "0.0.0.0"); }
+std::string ConfigManager::getMCPHost() const { return get("MCP_HOST", "127.0.0.1"); }
+
+std::vector<std::string> ConfigManager::getMCPAllowedPaths() const {
+    std::vector<std::string> paths;
+    std::string value = get("MCP_ALLOWED_PATHS", "");
+    std::istringstream iss(value);
+    std::string path;
+    while (std::getline(iss, path, ',')) {
+        path.erase(0, path.find_first_not_of(" \t"));
+        path.erase(path.find_last_not_of(" \t") + 1);
+        if (!path.empty()) paths.push_back(path);
+    }
+    return paths;
+}
+
+int ConfigManager::getMCPMaxReadBytes() const {
+    return std::clamp(getInt("MCP_MAX_READ_BYTES", 1024 * 1024), 1, 100 * 1024 * 1024);
+}
+
+int ConfigManager::getMCPMaxListEntries() const {
+    return std::clamp(getInt("MCP_MAX_LIST_ENTRIES", 10000), 1, 100000);
+}
 
 // --- Database Performance Settings ---
 int ConfigManager::getDBBusyTimeoutMs() const { return getInt("DB_BUSY_TIMEOUT_MS", 5000); }

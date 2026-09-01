@@ -44,9 +44,11 @@ void MCPIntegration::start(bool blocking) {
     };
     server_->set_capabilities(capabilities);
     
-    // Register built-in tools
     registerBuiltinTools();
-    
+
+    // File tools are deny-by-default. Operators must configure explicit roots.
+    setAllowedPaths(ConfigManager::instance().getMCPAllowedPaths());
+
     // Start server
     running_ = true;
     server_->start(blocking);
@@ -129,7 +131,10 @@ int MCPIntegration::getPort() const {
 }
 
 void MCPIntegration::setAllowedPaths(const std::vector<std::string>& paths) {
-    allowedPaths_ = paths;
+    allowedPaths_.clear();
+    for (const auto& path : paths) {
+        if (!path.empty()) allowedPaths_.push_back(path);
+    }
 }
 
 std::vector<std::string> MCPIntegration::getRegisteredTools() const {
@@ -157,7 +162,7 @@ void MCPIntegration::registerBuiltinTools() {
         mcp::tool tool = mcp::tool_builder("read_file")
             .with_description("Read the contents of a file")
             .with_string_param("path", "Path to the file to read", true)
-            .with_number_param("max_bytes", "Maximum bytes to read (0 = unlimited)", false)
+            .with_number_param("max_bytes", "Maximum bytes to read (0 = configured limit)", false)
             .build();
         
         server_->register_tool(tool,
@@ -213,20 +218,21 @@ void MCPIntegration::registerBuiltinTools() {
 }
 
 bool MCPIntegration::isPathAllowed(const std::string& path) const {
-    if (allowedPaths_.empty()) {
-        return true;  // No restrictions
-    }
-    
-    fs::path absPath = fs::absolute(path);
+    if (allowedPaths_.empty()) return false;
+
+    std::error_code ec;
+    const fs::path candidate = fs::weakly_canonical(fs::path(path), ec);
+    if (ec) return false;
+
     for (const auto& allowed : allowedPaths_) {
-        fs::path allowedAbs = fs::absolute(allowed);
-        // Check if path starts with allowed path
-        auto [iter, _] = std::mismatch(
-            allowedAbs.begin(), allowedAbs.end(), 
-            absPath.begin(), absPath.end());
-        if (iter == allowedAbs.end()) {
+        ec.clear();
+        const fs::path root = fs::weakly_canonical(fs::path(allowed), ec);
+        if (ec) continue;
+        const fs::path relative = candidate.lexically_relative(root);
+        if (!relative.empty() && relative != "." && *relative.begin() != "..") {
             return true;
         }
+        if (candidate == root) return true;
     }
     return false;
 }
@@ -235,26 +241,25 @@ std::string MCPIntegration::readFileContent(const std::string& path, size_t maxB
     if (!isPathAllowed(path)) {
         return "Error: Path not allowed";
     }
-    
-    if (!fs::exists(path)) {
-        return "Error: File not found";
+
+    const size_t configuredLimit = static_cast<size_t>(
+        ConfigManager::instance().getMCPMaxReadBytes());
+    const size_t effectiveLimit = maxBytes == 0
+        ? configuredLimit
+        : std::min(maxBytes, configuredLimit);
+
+    std::error_code ec;
+    const fs::path canonicalPath = fs::weakly_canonical(fs::path(path), ec);
+    if (ec || !fs::is_regular_file(canonicalPath, ec)) {
+        return "Error: File not found or not a regular file";
     }
-    
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return "Error: Cannot open file";
-    }
-    
-    std::ostringstream content;
-    if (maxBytes > 0) {
-        std::vector<char> buffer(maxBytes);
-        file.read(buffer.data(), maxBytes);
-        content.write(buffer.data(), file.gcount());
-    } else {
-        content << file.rdbuf();
-    }
-    
-    return content.str();
+
+    std::ifstream file(canonicalPath, std::ios::binary);
+    if (!file) return "Error: Cannot open file";
+
+    std::vector<char> buffer(effectiveLimit);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    return std::string(buffer.data(), static_cast<size_t>(file.gcount()));
 }
 
 std::string MCPIntegration::handleReadFile(const std::string& argsJson) {
@@ -335,34 +340,55 @@ std::string MCPIntegration::handleListFiles(const std::string& argsJson) {
             return "Error: Path not allowed";
         }
         
-        if (!fs::exists(path) || !fs::is_directory(path)) {
+        std::error_code ec;
+        const fs::path canonicalDir = fs::weakly_canonical(fs::path(path), ec);
+        if (ec || !fs::is_directory(canonicalDir, ec)) {
             return "Error: Directory not found";
         }
-        
+
         json result = json::array();
-        
-        auto addEntry = [&result](const fs::directory_entry& entry) {
+        const size_t maxEntries = static_cast<size_t>(
+            ConfigManager::instance().getMCPMaxListEntries());
+
+        auto addEntry = [this, &result, maxEntries](const fs::directory_entry& entry) {
+            if (result.size() >= maxEntries) return false;
+            std::error_code entryEc;
+            const fs::path canonicalEntry = fs::weakly_canonical(entry.path(), entryEc);
+            if (entryEc || !isPathAllowed(canonicalEntry.string())) return true;
             json item;
-            item["path"] = entry.path().string();
-            item["name"] = entry.path().filename().string();
-            item["is_directory"] = entry.is_directory();
-            if (!entry.is_directory()) {
-                item["size"] = entry.file_size();
-                item["extension"] = entry.path().extension().string();
+            item["path"] = canonicalEntry.string();
+            item["name"] = canonicalEntry.filename().string();
+            item["is_directory"] = entry.is_directory(entryEc);
+            if (entryEc) return true;
+            if (!item["is_directory"].get<bool>()) {
+                item["size"] = entry.file_size(entryEc);
+                item["extension"] = canonicalEntry.extension().string();
             }
             result.push_back(item);
+            return true;
         };
-        
+        bool truncated = false;
+
         if (recursive) {
-            for (const auto& entry : fs::recursive_directory_iterator(path)) {
-                addEntry(entry);
+            for (const auto& entry : fs::recursive_directory_iterator(canonicalDir)) {
+                if (!addEntry(entry)) {
+                    truncated = true;
+                    break;
+                }
             }
         } else {
-            for (const auto& entry : fs::directory_iterator(path)) {
-                addEntry(entry);
+            for (const auto& entry : fs::directory_iterator(canonicalDir)) {
+                if (!addEntry(entry)) {
+                    truncated = true;
+                    break;
+                }
             }
         }
-        
+
+        if (truncated) {
+            return json{{"entries", result}, {"truncated", true},
+                        {"limit", maxEntries}}.dump(2);
+        }
         return result.dump(2);
         
     } catch (const std::exception& e) {
