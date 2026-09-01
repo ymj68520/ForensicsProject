@@ -74,30 +74,9 @@ const Settings = () => {
       </div>
 
       <Card title={t('settings.api_config')}>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              {t('settings.api_url')} (C++ 后端)
-            </label>
-            <input
-              type="text"
-              value={settings.apiUrl}
-              onChange={(e) => handleSettingChange('apiUrl', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              Python 服务 URL
-            </label>
-            <input
-              type="text"
-              value={settings.pythonApiUrl}
-              onChange={(e) => handleSettingChange('pythonApiUrl', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
-            />
-          </div>
-        </div>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          服务地址由构建时的 VITE_CPP_API_URL、VITE_PYTHON_API_URL 和 VITE_CS_API_URL 配置。
+        </p>
       </Card>
 
       {/* LLM Model Configuration */}

@@ -4,8 +4,9 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 
-// 动态推导 Python 服务地址，跨机访问时用浏览器当前 host。
-const PYTHON_BASE = `http://${window.location.hostname}:8090`;
+import { PYTHON_API_BASE_URL } from '../config/runtime';
+
+const PYTHON_BASE = PYTHON_API_BASE_URL;
 
 const Logs = () => {
   const [activeService, setActiveService] = useState('python');

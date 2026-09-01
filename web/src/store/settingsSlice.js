@@ -1,26 +1,40 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const SETTINGS_KEY = 'forensics_settings';
-
-// 动态推导服务地址：跨机访问时用浏览器当前 host（如 192.168.31.50），
-// 避免硬编码 localhost 导致跨机访问失败。
-const host = (typeof window !== 'undefined' && window.location)
-  ? window.location.hostname
-  : 'localhost';
-const defaultApiUrl = `http://${host}:8080`;
-const defaultPythonApiUrl = `http://${host}:8090`;
+const DEFAULT_SETTINGS = {
+  refreshInterval: 5000,
+  autoRefresh: true,
+  theme: 'light',
+  language: 'en',
+  itemsPerPage: 20,
+  showTerminal: false,
+};
 
 const loadSettings = () => {
   try {
     const saved = localStorage.getItem(SETTINGS_KEY);
-    return saved ? JSON.parse(saved) : {};
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return {
+      refreshInterval: Number.isFinite(parsed.refreshInterval)
+        ? Math.min(60000, Math.max(1000, parsed.refreshInterval))
+        : undefined,
+      itemsPerPage: Number.isFinite(parsed.itemsPerPage)
+        ? Math.min(100, Math.max(5, parsed.itemsPerPage))
+        : undefined,
+      autoRefresh: typeof parsed.autoRefresh === 'boolean' ? parsed.autoRefresh : undefined,
+      theme: parsed.theme === 'dark' ? 'dark' : parsed.theme === 'light' ? 'light' : undefined,
+      language: parsed.language === 'zh' ? 'zh' : parsed.language === 'en' ? 'en' : undefined,
+      showTerminal: typeof parsed.showTerminal === 'boolean' ? parsed.showTerminal : undefined,
+    };
   } catch (error) {
     console.error('Failed to load settings:', error);
     return {};
   }
 };
 
-const saveSettings = (settings) => {
+const persistSettings = (settings) => {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (error) {
@@ -31,36 +45,20 @@ const saveSettings = (settings) => {
 const settingsSlice = createSlice({
   name: 'settings',
   initialState: {
-    apiUrl: defaultApiUrl,
-    pythonApiUrl: defaultPythonApiUrl,
-    refreshInterval: 5000,
-    autoRefresh: true,
-    theme: 'light',
-    language: 'en',
-    itemsPerPage: 20,
-    showTerminal: false,
-    ...loadSettings(),
+    ...DEFAULT_SETTINGS,
+    ...Object.fromEntries(Object.entries(loadSettings()).filter(([, value]) => value !== undefined)),
   },
   reducers: {
     updateSettings: (state, action) => {
       Object.assign(state, action.payload);
-      saveSettings(state);
+      persistSettings(state);
     },
     resetSettings: (state) => {
-      Object.assign(state, {
-        apiUrl: defaultApiUrl,
-        pythonApiUrl: defaultPythonApiUrl,
-        refreshInterval: 5000,
-        autoRefresh: true,
-        theme: 'light',
-        language: 'en',
-        itemsPerPage: 20,
-      });
-      saveSettings(state);
+      Object.assign(state, DEFAULT_SETTINGS);
+      persistSettings(state);
     },
   },
 });
 
 export const { updateSettings, resetSettings } = settingsSlice.actions;
-
 export default settingsSlice.reducer;

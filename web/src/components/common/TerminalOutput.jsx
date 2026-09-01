@@ -4,9 +4,10 @@ import Button from './Button';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useTranslation } from '../../hooks/useTranslation';
 import { CPP_BASE_URL, PYTHON_API_BASE_URL } from '../../services/api';
+import { CPP_WS_BASE_URL } from '../../config/runtime';
 
 const PYTHON_BASE = PYTHON_API_BASE_URL;
-const WS_BASE = CPP_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+const WS_BASE = CPP_WS_BASE_URL;
 const CPP_PORT = new URL(CPP_BASE_URL, window.location.origin).port || '80';
 const PYTHON_PORT = new URL(PYTHON_BASE, window.location.origin).port || '80';
 
