@@ -190,6 +190,11 @@ const InvestigationGraph = () => {
                     <Badge variant="blue" size="sm" data-testid="overlay-node-count">
                         {t('investigation_graph.overlay_nodes')}: {overlayNodeCount}
                     </Badge>
+                    {graph.base_nodes_truncated && (
+                        <Badge variant="yellow" size="sm" data-testid="base-node-truncated">
+                            {t('investigation_graph.base_nodes_truncated')} ({graph.base_max_nodes})
+                        </Badge>
+                    )}
                     <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
                         title={t('investigation_graph.max_base_nodes_hint')}>
                         <span className="hidden md:inline">{t('investigation_graph.max_base_nodes')}</span>

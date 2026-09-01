@@ -14,6 +14,8 @@ const normalizeGraph = (response) => ({
     task_id: response?.task_id ?? null,
     base_graph_available: response?.base_graph_available !== false,
     base_max_nodes: Number(response?.base_max_nodes) || 200,
+    base_nodes_returned: Number(response?.base_nodes_returned) || 0,
+    base_nodes_truncated: response?.base_nodes_truncated === true,
     nodes: Array.isArray(response?.nodes) ? response.nodes : [],
     links: Array.isArray(response?.links) ? response.links : [],
     warnings: Array.isArray(response?.warnings) ? response.warnings : [],
