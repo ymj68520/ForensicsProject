@@ -1,19 +1,60 @@
 #include "MySQLDaemon.h"
-#include <iostream>
+#include <cerrno>
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <signal.h>
+#include <thread>
+#include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <filesystem>
-#include <cstdlib>
-#include <signal.h>
+#include <sys/stat.h>
 
 namespace fs = std::filesystem;
 
 namespace ForensicAnalyzer {
 namespace Database {
 
+namespace {
+
+std::string find_mysqld() {
+    if (const char* configured = std::getenv("MYSQLD_PATH");
+        configured && *configured) {
+        if (::access(configured, X_OK) == 0) return configured;
+    }
+    const char* pathEnv = std::getenv("PATH");
+    if (!pathEnv) return {};
+    std::string pathList(pathEnv);
+    size_t start = 0;
+    while (start <= pathList.size()) {
+        const size_t end = pathList.find(':', start);
+        const std::string dir = pathList.substr(start, end == std::string::npos ? end : end - start);
+        const fs::path candidate = fs::path(dir.empty() ? "." : dir) / "mysqld";
+        if (::access(candidate.c_str(), X_OK) == 0) return candidate.string();
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return {};
+}
+
+bool trusted_data_dir(const fs::path& input, fs::path& output) {
+    std::error_code ec;
+    output = fs::weakly_canonical(input, ec);
+    if (ec || !fs::is_directory(output, ec)) return false;
+    const auto perms = fs::status(output, ec).permissions();
+    if (ec || (perms & fs::perms::others_write) != fs::perms::none) return false;
+    return true;
+}
+
+}  // namespace
+
 MySQLDaemon::MySQLDaemon(const std::string& dataDir) : dataDir_(dataDir) {
-    socketPath_ = dataDir + "/mysql.sock";
-    logPath_ = dataDir + "/mysqld.log";
+    fs::path trusted;
+    if (trusted_data_dir(dataDir, trusted)) {
+        dataDir_ = trusted.string();
+    }
+    socketPath_ = (fs::path(dataDir_) / "mysql.sock").string();
+    logPath_ = (fs::path(dataDir_) / "mysqld.log").string();
 }
 
 MySQLDaemon::~MySQLDaemon() {
@@ -21,12 +62,18 @@ MySQLDaemon::~MySQLDaemon() {
 }
 
 bool MySQLDaemon::checkMySqlAvailable() {
-    return system("which mysqld > /dev/null 2>&1") == 0;
+    return !find_mysqld().empty();
 }
 
 bool MySQLDaemon::start() {
-    if (!checkMySqlAvailable()) {
-        lastError_ = "mysqld binary not found in PATH.";
+    fs::path trusted;
+    if (!trusted_data_dir(dataDir_, trusted)) {
+        lastError_ = "MySQL datadir must be an existing empty directory without world-write permissions.";
+        return false;
+    }
+    const std::string mysqld = find_mysqld();
+    if (mysqld.empty()) {
+        lastError_ = "mysqld binary not found in PATH or MYSQLD_PATH.";
         return false;
     }
 
@@ -35,18 +82,21 @@ bool MySQLDaemon::start() {
         lastError_ = "Failed to fork mysqld process.";
         return false;
     } else if (pid == 0) {
-        // Child process
-        std::string cmd = "mysqld --skip-grant-tables --skip-networking --socket=" + socketPath_ +
-                          " --datadir=" + dataDir_ + " --log-error=" + logPath_;
-        execl("/bin/sh", "sh", "-c", cmd.c_str(), NULL);
-        exit(1); // Exits if execl fails
+        ::umask(0077);
+        std::vector<std::string> args{
+            mysqld, "--skip-grant-tables", "--skip-networking",
+            "--socket=" + socketPath_, "--datadir=" + dataDir_,
+            "--log-error=" + logPath_};
+        std::vector<char*> argv;
+        argv.reserve(args.size() + 1);
+        for (auto& arg : args) argv.push_back(arg.data());
+        argv.push_back(nullptr);
+        ::execv(mysqld.c_str(), argv.data());
+        _exit(127);
     } else {
         daemonPid_ = pid;
-        // Wait for socket to appear (max 10 seconds)
         for (int i = 0; i < 100; i++) {
-            if (fs::exists(socketPath_)) {
-                break;
-            }
+            if (fs::exists(socketPath_)) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
@@ -63,8 +113,8 @@ bool MySQLDaemon::start() {
             return false;
         }
 
-        // Connect using the local socket
-        if (mysql_real_connect(conn_, "localhost", "root", "", NULL, 0, socketPath_.c_str(), 0) == NULL) {
+        if (mysql_real_connect(conn_, "localhost", "root", "", NULL, 0,
+                               socketPath_.c_str(), 0) == NULL) {
             lastError_ = std::string("mysql_real_connect() failed: ") + mysql_error(conn_);
             stop();
             return false;
@@ -83,8 +133,19 @@ void MySQLDaemon::stop() {
 
     if (daemonPid_ != -1) {
         kill(daemonPid_, SIGTERM);
-        waitpid(daemonPid_, NULL, 0);
-        daemonPid_ = -1;
+        for (int i = 0; i < 50; ++i) {
+            const pid_t result = waitpid(daemonPid_, nullptr, WNOHANG);
+            if (result == daemonPid_ || (result == -1 && errno == ECHILD)) {
+                daemonPid_ = -1;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (daemonPid_ != -1) {
+            kill(daemonPid_, SIGKILL);
+            waitpid(daemonPid_, nullptr, 0);
+            daemonPid_ = -1;
+        }
     }
     
     // Clean up temporary files
