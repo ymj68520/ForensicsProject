@@ -8,16 +8,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
+TRACELENS_ROOT="$PROJECT_ROOT"
+# shellcheck disable=SC1091
+source "$TRACELENS_ROOT/scripts/lib/tracelens_env.sh"
 
 # Optional download proxy for flaky networks. Set PIP_PROXY in the environment
-# or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); exported as
-# HTTP_PROXY/HTTPS_PROXY so pip uses it during dependency install.
-if [ -z "${PIP_PROXY:-}" ] && [ -f "$PROJECT_ROOT/.env" ]; then
-    PIP_PROXY="$(sed -nE 's/^[[:space:]]*PIP_PROXY=//p' "$PROJECT_ROOT/.env" | head -1)"
-    PIP_PROXY="${PIP_PROXY%$'\r'}"
-    PIP_PROXY="${PIP_PROXY%\"}"; PIP_PROXY="${PIP_PROXY#\"}"
-    PIP_PROXY="${PIP_PROXY%\'}"; PIP_PROXY="${PIP_PROXY#\'}"
-fi
+# or .env; it is exported by the shared configuration loader.
 if [ -n "${PIP_PROXY:-}" ]; then
     export HTTP_PROXY="$PIP_PROXY" HTTPS_PROXY="$PIP_PROXY"
     echo -e "${YELLOW}使用下载代理${NC}: $PIP_PROXY"
@@ -54,14 +50,14 @@ else
 fi
 
 # 检查端口占用
-if lsof -i :8090 > /dev/null 2>&1; then
-    echo -e "${YELLOW}端口 8090 已被占用，正在关闭旧进程...${NC}"
-    lsof -ti :8090 | xargs -r kill -9
+if lsof -i :"$PYTHON_HTTP_PORT" > /dev/null 2>&1; then
+    echo -e "${YELLOW}端口 ${PYTHON_HTTP_PORT} 已被占用，正在关闭旧进程...${NC}"
+    lsof -ti :"$PYTHON_HTTP_PORT" | xargs -r kill -9
     sleep 1
 fi
 
 # 启动服务
-echo "启动 Python HTTP 服务（端口 8090）..."
+echo "启动 Python HTTP 服务（端口 ${PYTHON_HTTP_PORT}）..."
 # IMPORTANT: run from python_service/ with PYTHONPATH pointing at it, matching
 # start_all_services.sh. graphiti_integration/ is a sibling of httpserver/, so
 # it is only importable when python_service/ is on sys.path. Launching from the

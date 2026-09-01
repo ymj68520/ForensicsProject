@@ -6,6 +6,9 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRACELENS_ROOT="$PROJECT_ROOT"
+# shellcheck disable=SC1091
+source "$TRACELENS_ROOT/scripts/lib/tracelens_env.sh"
 cd "$PROJECT_ROOT"
 
 # 颜色定义
@@ -76,11 +79,11 @@ test_endpoint() {
 echo -e "${BLUE}[1/5] 服务状态检查${NC}"
 echo ""
 
-check_port 8080 "C++ 后端"
-check_port 8090 "Python 服务"
-check_port ${CS_PORT:-8091} "分布式 C/S 服务"
-check_port 3000 "Web 前端" 2>/dev/null || true
-check_port 1234 "LM Studio" 2>/dev/null || true
+check_port "$HTTP_SERVER_PORT" "C++ 后端"
+check_port "$PYTHON_HTTP_PORT" "Python 服务"
+check_port "$CS_PORT" "分布式 C/S 服务"
+check_port "$WEB_DEV_PORT" "Web 前端" 2>/dev/null || true
+check_port "${LLM_PORT:-1234}" "LM Studio" 2>/dev/null || true
 
 echo ""
 
@@ -100,18 +103,18 @@ echo ""
 echo -e "${BLUE}[3/5] API 端点测试${NC}"
 echo ""
 
-if check_port 8080 "C++ 后端" >/dev/null 2>&1; then
-    test_endpoint "http://localhost:8080/api/health" "C++ 健康检查"
-    test_endpoint "http://localhost:8080/api/tasks/list?limit=1" "C++ 任务列表"
+if check_port "$HTTP_SERVER_PORT" "C++ 后端" >/dev/null 2>&1; then
+    test_endpoint "$CPP_BACKEND_URL/api/system/health" "C++ 健康检查"
+    test_endpoint "$CPP_BACKEND_URL/api/tasks/list?limit=1" "C++ 任务列表"
 fi
 
-if check_port 8090 "Python 服务" >/dev/null 2>&1; then
-    test_endpoint "http://localhost:8090/health" "Python 健康检查"
-    test_endpoint "http://localhost:8090/docs" "API 文档"
+if check_port "$PYTHON_HTTP_PORT" "Python 服务" >/dev/null 2>&1; then
+    test_endpoint "$PYTHON_SERVICE_URL/health" "Python 健康检查"
+    test_endpoint "$PYTHON_SERVICE_URL/docs" "API 文档"
 fi
 
-if check_port ${CS_PORT:-8091} "分布式 C/S 服务" >/dev/null 2>&1; then
-    test_endpoint "http://localhost:${CS_PORT:-8091}/health" "C/S 健康检查"
+if check_port "$CS_PORT" "分布式 C/S 服务" >/dev/null 2>&1; then
+    test_endpoint "$CS_SERVICE_URL/health" "C/S 健康检查"
 fi
 
 echo ""
@@ -122,9 +125,9 @@ echo ""
 echo -e "${BLUE}[4/5] LLM 分析测试${NC}"
 echo ""
 
-if check_port 8090 "Python 服务" >/dev/null 2>&1; then
+if check_port "$PYTHON_HTTP_PORT" "Python 服务" >/dev/null 2>&1; then
     echo "测试文本内容分析..."
-    test_response=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8090/api/llm/analyze \
+    test_response=$(curl -s -w "\n%{http_code}" -X POST "$PYTHON_SERVICE_URL/api/llm/analyze" \
         -H "Content-Type: application/json" \
         -d '{"content": "测试文本", "model_type": "text"}' 2>/dev/null)
 
@@ -178,17 +181,17 @@ cpp_running=false
 python_running=false
 lm_running=false
 
-if lsof -i :8080 > /dev/null 2>&1; then cpp_running=true; fi
-if lsof -i :8090 > /dev/null 2>&1; then python_running=true; fi
-if lsof -i :1234 > /dev/null 2>&1; then lm_running=true; fi
+if lsof -i :"$HTTP_SERVER_PORT" > /dev/null 2>&1; then cpp_running=true; fi
+if lsof -i :"$PYTHON_HTTP_PORT" > /dev/null 2>&1; then python_running=true; fi
+if lsof -i :"${LLM_PORT:-1234}" > /dev/null 2>&1; then lm_running=true; fi
 
 if [ "$cpp_running" = true ] && [ "$python_running" = true ] && [ "$lm_running" = true ]; then
     echo -e "${GREEN}✅ 所有服务正常运行！${NC}"
     echo ""
     echo "访问地址:"
-    echo "  📊 Web UI:        http://localhost:3000"
-    echo "  🔧 C++ API:       http://localhost:8080/docs"
-    echo "  🐍 Python API:    http://localhost:8090/docs"
+    echo "  📊 Web UI:        http://localhost:$WEB_DEV_PORT"
+    echo "  🔧 C++ API:       $CPP_BACKEND_URL/api/docs"
+    echo "  🐍 Python API:    $PYTHON_SERVICE_URL/docs"
     echo ""
     echo "现在可以正常使用 Files 页面的 AI 分析功能！"
 else
@@ -198,7 +201,7 @@ else
     if [ "$cpp_running" = false ]; then
         echo "启动 C++ 后端:"
         echo "  cd $PROJECT_ROOT"
-        echo "  ./build/forensic_analyzer --http-server 8080"
+        echo "  ./build/forensic_analyzer --http-server $HTTP_SERVER_PORT"
         echo ""
     fi
 

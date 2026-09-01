@@ -6,6 +6,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+TRACELENS_ROOT="$PROJECT_ROOT"
+# shellcheck disable=SC1091
+source "$TRACELENS_ROOT/scripts/lib/tracelens_env.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -17,33 +20,16 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Starting ForensicsProject HTTP Services${NC}"
 echo "=========================================="
 
-# Load environment variables. Use set -a/source (not xargs) so values with
-# spaces, quotes, or special characters survive - xargs mangles them.
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    echo -e "${GREEN}Loading environment from .env${NC}"
-    set -a
-    # shellcheck disable=SC1090
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
-
 # Optional download proxy for flaky networks. Set PIP_PROXY in the environment
-# or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); exported as
-# HTTP_PROXY/HTTPS_PROXY so pip uses it during dependency install.
-if [ -z "${PIP_PROXY:-}" ] && [ -f "$PROJECT_ROOT/.env" ]; then
-    PIP_PROXY="$(sed -nE 's/^[[:space:]]*PIP_PROXY=//p' "$PROJECT_ROOT/.env" | head -1)"
-    PIP_PROXY="${PIP_PROXY%$'\r'}"
-    PIP_PROXY="${PIP_PROXY%\"}"; PIP_PROXY="${PIP_PROXY#\"}"
-    PIP_PROXY="${PIP_PROXY%\'}"; PIP_PROXY="${PIP_PROXY#\'}"
-fi
+# or .env; it is exported by the shared configuration loader.
 if [ -n "${PIP_PROXY:-}" ]; then
     export HTTP_PROXY="$PIP_PROXY" HTTPS_PROXY="$PIP_PROXY"
     echo -e "${YELLOW}Using download proxy${NC}: $PIP_PROXY"
 fi
 
-# Default ports
-CPP_PORT=${HTTP_SERVER_PORT:-8080}
-PYTHON_PORT=${PYTHON_HTTP_PORT:-8090}
+# Default ports from the shared root configuration.
+CPP_PORT="$HTTP_SERVER_PORT"
+PYTHON_PORT="$PYTHON_HTTP_PORT"
 
 # Function to cleanup on exit
 cleanup() {

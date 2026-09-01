@@ -24,8 +24,9 @@ YELLOW := \033[1;33m
 NC := \033[0m
 
 # Project directories
-BUILD_DIR := build
-PROJECT_ROOT := $(shell pwd)
+PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+BUILD_DIR := $(PROJECT_ROOT)/build
+TRACELENS_ENV := $(PROJECT_ROOT)/scripts/lib/tracelens_env.sh
 
 # ==============================================================================
 # Build Targets
@@ -79,7 +80,8 @@ acceptance-matrix:
 cpp:
 	@echo "$(BLUE)➤ Starting C++ HTTP server...$(NC)"
 	@if [ -f "$(BUILD_DIR)/forensic_analyzer" ]; then \
-		cd $(BUILD_DIR) && ./forensic_analyzer --http-server $${HTTP_SERVER_PORT:-8080}; \
+		. "$(TRACELENS_ENV)"; \
+		cd "$(BUILD_DIR)" && ./forensic_analyzer --http-server "$${HTTP_SERVER_PORT}"; \
 	else \
 		echo "$(YELLOW)⚠ C++ binary not found. Run 'make build' first.$(NC)"; \
 		exit 1; \
@@ -100,7 +102,7 @@ web: web-dev
 
 web-dev:
 	@echo "$(BLUE)➤ Starting web development server...$(NC)"
-	@cd web && npm run dev
+	@. "$(TRACELENS_ENV)"; cd "$(PROJECT_ROOT)/web" && npm run dev -- --host "$${WEB_DEV_HOST}" --port "$${WEB_DEV_PORT}"
 
 # ==============================================================================
 # Maintenance Targets
@@ -186,9 +188,9 @@ help:
 	@echo ""
 	@echo "$(GREEN)Service Commands:$(NC)"
 	@echo "  make start          - Start all services (C++ + Python + Web)"
-	@echo "  make cpp            - Start only C++ HTTP server (port 8080)"
-	@echo "  make python         - Start only Python service (port 8090)"
-	@echo "  make web-dev        - Start web dev server (port 3000)"
+	@echo "  make cpp            - Start only C++ HTTP server (HTTP_SERVER_PORT, default 8080)"
+	@echo "  make python         - Start only Python service (PYTHON_HTTP_PORT, default 8090)"
+	@echo "  make web-dev        - Start web dev server (WEB_DEV_PORT, default 3000)"
 	@echo ""
 	@echo "$(GREEN)Setup Commands:$(NC)"
 	@echo "  make setup          - Install all dependencies"
@@ -215,18 +217,18 @@ help:
 	@echo "  3. make start       - Start all services"
 	@echo ""
 	@echo "$(GREEN)Access Points:$(NC)"
-	@echo "  Web Interface:      http://localhost:8080/"
-	@echo "  C++ API:            http://localhost:8080/api/docs"
-	@echo "  Python API:         http://localhost:8090/docs"
+	@echo "  Web Interface:      $${CPP_BACKEND_URL:-http://localhost:8080}/"
+	@echo "  C++ API:            $${CPP_BACKEND_URL:-http://localhost:8080}/api/docs"
+	@echo "  Python API:         $${PYTHON_SERVICE_URL:-http://localhost:8090}/docs"
 
 # ==============================================================================
 # Documentation
 # ==============================================================================
 
 docs:
-	@echo "$(BLUE)➤ Opening API documentation...$(NC)"
-	@echo "$(GREEN)C++ API:$(NC) http://localhost:8080/api/docs"
-	@echo "$(GREEN)Python API:$(NC) http://localhost:8090/docs"
-	@if command -v xdg-open > /dev/null; then \
-		xdg-open http://localhost:8080/api/docs 2>/dev/null || true; \
+	@. "$(TRACELENS_ENV)"; \
+	echo "$(GREEN)C++ API:$(NC) $$CPP_BACKEND_URL/api/docs"; \
+	echo "$(GREEN)Python API:$(NC) $$PYTHON_SERVICE_URL/docs"; \
+	if command -v xdg-open > /dev/null; then \
+		xdg-open "$$CPP_BACKEND_URL/api/docs" 2>/dev/null || true; \
 	fi

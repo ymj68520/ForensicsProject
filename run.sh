@@ -5,7 +5,7 @@
 # 功能：CMake 编译 C++ → 构建 Web 前端 (npm) → 启动全部服务（前台运行）
 #
 # 用法:
-#   ./run.sh                  # 编译 + 启动 C++(8666) + Python(8090) + C/S(8091)
+#   ./run.sh                  # 编译 + 启动 C++(8080) + Python(8090) + C/S(8091)
 #   ./run.sh --build-only     # 仅编译，不启动服务
 #   ./run.sh --no-build       # 跳过编译，直接启动（需已构建）
 #   ./run.sh --no-web         # 跳过 web 前端构建
@@ -13,7 +13,7 @@
 #   ./run.sh --jobs 4         # 指定编译并行数（默认 4，避免占满 CPU）
 #   ./run.sh --clean          # 编译前先清理 build 目录（保留数据库等数据）
 #
-# 端口从 .env 读取（默认: C++ 8666 / Python 8090 / C/S 8091）。
+# 端口从 .env 读取（默认: C++ 8080 / Python 8090 / C/S 8091）。
 # 按 Ctrl+C 停止所有服务。
 # ---------------------------------------------------------------------------
 
@@ -56,29 +56,15 @@ done
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
-# ── 加载 .env ─────────────────────────────────────────────────────────────────
-# 注意：用独立变量 TRACELENS_ROOT 锁定项目根，避免被 .env 里的
-# PROJECT_ROOT=（空值）或 DATA_DIR=（相对值）覆盖后路径错乱。
+# ── 加载统一运行时配置 ────────────────────────────────────────────────────────
 TRACELENS_ROOT="$PROJECT_ROOT"
-if [ -f "$TRACELENS_ROOT/.env" ]; then
-    set -a
-    # 过滤两类行：
-    #   1) PYTHON_CORS_ORIGINS=["*"] —— C++ dotenv 无法解析，会告警
-    #   2) PROJECT_ROOT=（空值）—— 会覆盖脚本算出的真实项目根，导致
-    #      后续 $PROJECT_ROOT/python_service 变成 /python_service 而报权限错误
-    grep -vE '^\s*PYTHON_CORS_ORIGINS\s*=' "$TRACELENS_ROOT/.env" \
-        | grep -vE '^\s*PROJECT_ROOT\s*=' \
-        | grep -vE '^\s*#' | grep -vE '^\s*$' > /tmp/tracelens.env.$$
-    source /tmp/tracelens.env.$$
-    rm -f /tmp/tracelens.env.$$
-    set +a
-fi
-# 始终用脚本算出的项目根，不受 .env 影响
+# shellcheck disable=SC1091
+source "$TRACELENS_ROOT/scripts/lib/tracelens_env.sh"
 PROJECT_ROOT="$TRACELENS_ROOT"
 
-CPP_PORT="${HTTP_SERVER_PORT:-8666}"
-PYTHON_PORT="${PYTHON_HTTP_PORT:-8090}"
-CS_PORT="${CS_PORT:-8091}"
+CPP_PORT="$HTTP_SERVER_PORT"
+PYTHON_PORT="$PYTHON_HTTP_PORT"
+CS_PORT="$CS_PORT"
 
 echo -e "${CYAN}${BOLD}"
 echo "╔════════════════════════════════════════════════════════════╗"

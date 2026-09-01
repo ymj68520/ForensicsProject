@@ -11,6 +11,9 @@ set -e
 # Script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+TRACELENS_ROOT="$PROJECT_ROOT"
+# shellcheck disable=SC1091
+source "$TRACELENS_ROOT/scripts/lib/tracelens_env.sh"
 BUILD_DIR="${PROJECT_ROOT}/build"
 
 # Colors for output
@@ -30,37 +33,21 @@ echo "║     C++ Server + Python Service + Web Frontend             ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Load environment variables from .env
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    echo -e "${GREEN}✓${NC} Loading environment from ${BOLD}.env${NC}"
-    set -a  # Automatically export all variables
-    source "$PROJECT_ROOT/.env"
-    set +a
-else
-    echo -e "${YELLOW}⚠${NC} No .env file found, using defaults"
-fi
+# Load environment variables from the shared configuration loader above.
 
 # Optional download proxy for flaky networks. Set PIP_PROXY in the environment
-# or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); exported as
-# HTTP_PROXY/HTTPS_PROXY so pip uses it during dependency install.
-if [ -z "${PIP_PROXY:-}" ] && [ -f "$PROJECT_ROOT/.env" ]; then
-    PIP_PROXY="$(sed -nE 's/^[[:space:]]*PIP_PROXY=//p' "$PROJECT_ROOT/.env" | head -1)"
-    PIP_PROXY="${PIP_PROXY%$'\r'}"
-    PIP_PROXY="${PIP_PROXY%\"}"; PIP_PROXY="${PIP_PROXY#\"}"
-    PIP_PROXY="${PIP_PROXY%\'}"; PIP_PROXY="${PIP_PROXY#\'}"
-fi
+# or .env; it is exported by the shared configuration loader.
 if [ -n "${PIP_PROXY:-}" ]; then
     export HTTP_PROXY="$PIP_PROXY" HTTPS_PROXY="$PIP_PROXY"
     echo -e "${YELLOW}⚠${NC} Using download proxy: ${PIP_PROXY}"
 fi
 
-# Default ports
-CPP_PORT=${HTTP_SERVER_PORT:-8080}
-PYTHON_PORT=${PYTHON_HTTP_PORT:-8090}
-# Distributed C/S server (python_service/server). Distinct from the legacy
-# httpserver's 8090 — dual-stack deployments run both simultaneously.
-CS_PORT="${CS_PORT:-8091}"
-WEB_PORT=${CPP_PORT}  # Web is served by C++ server
+# Default ports (shared root configuration)
+CPP_PORT="$HTTP_SERVER_PORT"
+PYTHON_PORT="$PYTHON_HTTP_PORT"
+# Distributed C/S server (python_service/server).
+CS_PORT="$CS_PORT"
+WEB_PORT="$CPP_PORT"  # Web is served by C++ server
 
 # PIDs for cleanup
 CPP_PID=""
