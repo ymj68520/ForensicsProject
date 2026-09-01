@@ -92,51 +92,107 @@ else()
   message(STATUS "zstd not found - zst support disabled")
 endif()
 
-# Find nlohmann/json (try multiple methods)
-find_package(nlohmann_json QUIET)
-if(NOT nlohmann_json_FOUND)
-  # Try to find via pkg-config if available
-  find_package(PkgConfig QUIET)
-  if(PKG_CONFIG_FOUND)
-    pkg_check_modules(NLOHMANN_JSON QUIET nlohmann_json)
-  endif()
-
-  if(NOT NLOHMANN_JSON_FOUND)
-    # Fallback to using header-only version
-    message(STATUS "Using system-installed nlohmann/json headers")
-    set(NLOHMANN_JSON_INCLUDE_DIRS "/usr/include/nlohmann")
-  endif()
-endif()
-
-# Find asio (usually header-only)
-find_package(asio QUIET)
-if(NOT asio_FOUND)
-  message(STATUS "Using system-installed asio headers")
-  set(ASIO_INCLUDE_DIRS "/usr/include")
-endif()
-
-# TSK library paths
-if(WIN32)
-  # Windows: Use local TSK build
-  set(TSK_INCLUDE_DIR
-      "${CMAKE_SOURCE_DIR}/sleuthkit"
-      CACHE PATH "TSK include directory")
-  set(TSK_LIBRARY_DIR
-      "${CMAKE_SOURCE_DIR}/sleuthkit/win32/x64/Release_NoLibs"
-      CACHE PATH "TSK library directory")
-  set(TSK_LIBRARIES "libtsk.lib")
-  set(PLATFORM_LIBRARIES "ole32")
+# Find nlohmann/json (package config, pkg-config, then an overridable header path)
+find_package(nlohmann_json QUIET CONFIG)
+if(nlohmann_json_FOUND)
+  set(NLOHMANN_JSON_INCLUDE_DIRS "")
 else()
-  # Linux/Unix: Use system-installed TSK
-  set(TSK_INCLUDE_DIR
-      "/usr/local/include"
-      CACHE PATH "TSK include directory")
-  set(TSK_LIBRARY_DIR
-      "/usr/local/lib"
-      CACHE PATH "TSK library directory")
-  set(TSK_LIBRARIES "tsk")
-  set(PLATFORM_LIBRARIES "pthread" "dl")
+  pkg_check_modules(NLOHMANN_JSON QUIET nlohmann_json)
+  find_path(NLOHMANN_JSON_INCLUDE_DIR
+    NAMES nlohmann/json.hpp
+    HINTS ${NLOHMANN_JSON_INCLUDE_DIRS}
+    PATH_SUFFIXES include)
+  if(NLOHMANN_JSON_INCLUDE_DIR)
+    set(NLOHMANN_JSON_INCLUDE_DIRS "${NLOHMANN_JSON_INCLUDE_DIR}")
+  else()
+    message(FATAL_ERROR
+      "nlohmann/json.hpp not found. Set CMAKE_PREFIX_PATH or "
+      "NLOHMANN_JSON_INCLUDE_DIR to the directory containing nlohmann/json.hpp.")
+  endif()
 endif()
+
+# Asio is header-only; prefer package config/pkg-config and then an overridable
+# header search instead of assuming /usr/include.
+find_package(asio QUIET CONFIG)
+if(NOT asio_FOUND)
+  pkg_check_modules(ASIO QUIET asio)
+  find_path(ASIO_INCLUDE_DIR
+    NAMES asio.hpp
+    HINTS ${ASIO_INCLUDE_DIRS}
+    PATH_SUFFIXES include)
+  if(ASIO_INCLUDE_DIR)
+    set(ASIO_INCLUDE_DIRS "${ASIO_INCLUDE_DIR}")
+  else()
+    message(FATAL_ERROR
+      "asio.hpp not found. Set CMAKE_PREFIX_PATH or ASIO_INCLUDE_DIR.")
+  endif()
+endif()
+
+# The Sleuth Kit can be supplied by a package manager or a custom prefix.
+# These cache variables remain explicit escape hatches for Windows/vendor builds.
+set(TSK_INCLUDE_DIR "" CACHE PATH "TSK include directory")
+set(TSK_LIBRARY_DIR "" CACHE PATH "TSK library directory")
+set(TSK_LIBRARIES "" CACHE STRING "TSK libraries or imported target")
+if(WIN32)
+  if(NOT TSK_INCLUDE_DIR)
+    set(TSK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/sleuthkit" CACHE PATH "TSK include directory" FORCE)
+  endif()
+  if(NOT TSK_LIBRARY_DIR)
+    set(TSK_LIBRARY_DIR "${CMAKE_SOURCE_DIR}/sleuthkit/win32/x64/Release_NoLibs" CACHE PATH "TSK library directory" FORCE)
+  endif()
+  if(NOT TSK_LIBRARIES)
+    set(TSK_LIBRARIES "libtsk.lib" CACHE STRING "TSK libraries" FORCE)
+  endif()
+else()
+  pkg_check_modules(TSK_PKG QUIET tsk)
+  if(NOT TSK_INCLUDE_DIR)
+    if(TSK_PKG_INCLUDE_DIRS)
+      list(GET TSK_PKG_INCLUDE_DIRS 0 TSK_INCLUDE_DIR)
+      set(TSK_INCLUDE_DIR "${TSK_INCLUDE_DIR}" CACHE PATH "TSK include directory" FORCE)
+    else()
+      find_path(TSK_INCLUDE_DIR
+        NAMES tsk/libtsk.h libtsk.h
+        HINTS ${CMAKE_PREFIX_PATH}
+        PATH_SUFFIXES include)
+    endif()
+  endif()
+  if(NOT TSK_LIBRARY_DIR)
+    if(TSK_PKG_LIBRARY_DIRS)
+      list(GET TSK_PKG_LIBRARY_DIRS 0 TSK_LIBRARY_DIR)
+      set(TSK_LIBRARY_DIR "${TSK_LIBRARY_DIR}" CACHE PATH "TSK library directory" FORCE)
+    else()
+      find_path(TSK_LIBRARY_DIR
+        NAMES libtsk.so libtsk.a
+        HINTS ${CMAKE_PREFIX_PATH}
+        PATH_SUFFIXES lib lib64)
+    endif()
+  endif()
+  if(NOT TSK_LIBRARIES)
+    find_library(TSK_LIBRARY NAMES tsk libtsk HINTS ${TSK_PKG_LIBRARY_DIRS})
+    if(TSK_LIBRARY)
+      set(TSK_LIBRARIES "${TSK_LIBRARY}" CACHE STRING "TSK libraries" FORCE)
+    endif()
+  endif()
+  if(NOT TSK_INCLUDE_DIR OR NOT TSK_LIBRARIES)
+    message(FATAL_ERROR
+      "The Sleuth Kit was not found. Set TSK_INCLUDE_DIR, TSK_LIBRARY_DIR, "
+      "TSK_LIBRARIES, or CMAKE_PREFIX_PATH.")
+  endif()
+endif()
+
+# Optional database connector headers are discovered through pkg-config where
+# available; find_path keeps non-pkg-config installations portable.
+pkg_check_modules(LIBPQ QUIET libpq)
+find_path(LIBPQ_INCLUDE_DIR
+  NAMES libpq-fe.h
+  HINTS ${LIBPQ_INCLUDE_DIRS}
+  PATH_SUFFIXES include postgresql)
+pkg_check_modules(MYSQLCLIENT QUIET mysqlclient)
+find_path(MYSQLCLIENT_INCLUDE_DIR
+  NAMES mysql/mysql.h
+  HINTS ${MYSQLCLIENT_INCLUDE_DIRS}
+  PATH_SUFFIXES include)
+
 
 include_directories(
   ${CMAKE_SOURCE_DIR}
@@ -159,9 +215,8 @@ include_directories(
   ${ZSTD_INCLUDE_DIRS}
   ${SQLCIPHER_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/libs/sqlite3
-  /usr/include/postgresql
-  /usr/include/postgresql/16/server
-  /usr/include/mysql
+  ${LIBPQ_INCLUDE_DIR}
+  ${MYSQLCLIENT_INCLUDE_DIR}
   # Source root
   ${CMAKE_SOURCE_DIR}/src
   # Core modules
