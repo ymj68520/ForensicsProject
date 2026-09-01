@@ -24,6 +24,7 @@ import Terminal from './pages/Terminal';
 import Distributed from './pages/Distributed';
 
 const WeChatGraph = React.lazy(() => import('./pages/WeChatGraph/WeChatGraph'));
+const WeChatForensics = React.lazy(() => import('./pages/WeChatForensics'));
 
 export const appRoutes = [
   {
@@ -71,6 +72,14 @@ export const appRoutes = [
         element: (
           <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-slate-400">Loading...</div></div>}>
             <WeChatGraph />
+          </React.Suspense>
+        ),
+      },
+      {
+        path: 'wechat-forensics',
+        element: (
+          <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-slate-400">Loading...</div></div>}>
+            <WeChatForensics />
           </React.Suspense>
         ),
       },

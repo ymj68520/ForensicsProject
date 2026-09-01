@@ -15,6 +15,7 @@ import logging
 from fastapi import APIRouter
 
 from .wechat_graph_endpoints import _graph, _data
+from .wechat_forensics import router as forensics_router
 from .wechat_graph_models import (  # noqa: F401
     GraphResponse,
     TimelineResponse,
@@ -32,3 +33,5 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(_graph.router)
 router.include_router(_data.router)
+# WeChat forensics (微信取证): direct import/parse of decrypted account DBs
+router.include_router(forensics_router)

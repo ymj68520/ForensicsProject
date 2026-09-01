@@ -33,6 +33,7 @@ const Layout = ({ children }) => {
     { name: t('nav.investigation_workbench'), href: '/investigation', icon: FileSearch },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: t('nav.memory'), href: '/memory', icon: Cpu },
+    { name: t('nav.wechat_forensics'), href: '/wechat-forensics', icon: MessageCircle },
     { name: t('nav.wechat_graph'), href: '/wechat-graph', icon: MessageCircle },
     { name: t('nav.oss_analysis'), href: '/oss', icon: Cloud },
     { name: t('nav.search'), href: '/search', icon: Search },

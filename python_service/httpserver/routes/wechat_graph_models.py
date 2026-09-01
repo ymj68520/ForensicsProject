@@ -141,8 +141,12 @@ async def _resolve_android_db_path(task_id: str) -> str:
     Tries the C++ backend task metadata first (output_raw_db derived),
     then falls back to a glob search in common output directories.
 
+    WeChat forensics imports (微信取证) are first-class identifiers here: a
+    ``wx_<import_id>`` task id resolves to that import's normalized
+    graph.db, which carries the same wechat_* tables as an android.db.
+
     Args:
-        task_id: The task identifier.
+        task_id: The task identifier (or ``wx_<import_id>``).
 
     Returns:
         Absolute path to the _android.db file.
@@ -150,6 +154,22 @@ async def _resolve_android_db_path(task_id: str) -> str:
     Raises:
         HTTPException: If the task is not found or the database cannot be located.
     """
+    # WeChat forensics import shortcut: wx_<import_id>
+    if task_id.startswith("wx_"):
+        from ..services.wechat_import_service import get_wechat_import_service
+        service = get_wechat_import_service()
+        try:
+            db_path = service._graph_db_path(task_id[3:])
+        except ValueError:
+            db_path = ""
+        if db_path and os.path.exists(db_path):
+            return db_path
+        raise HTTPException(
+            status_code=404,
+            detail=f"WeChat import {task_id} not found. Create it via "
+                   "POST /api/wechat/forensics/imports first.",
+        )
+
     from ..services import get_service_manager
     service_manager = get_service_manager()
 
