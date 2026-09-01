@@ -200,8 +200,8 @@ app = create_app()
 if __name__ == "__main__":
     uvicorn.run(
         "server.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
+        host=settings.CS_HOST,
+        port=settings.CS_PORT,
         reload=settings.ENVIRONMENT == "development",
         log_level="info",
     )

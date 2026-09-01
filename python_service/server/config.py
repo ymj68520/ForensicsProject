@@ -83,13 +83,12 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
-    # Server (distributed C/S backend).
-    # Port 8091, NOT 8090: the legacy python_service/httpserver (LLM/graphiti
-    # proxy for the local-mode C++ 8080 server) already owns 8090. Dual-stack
-    # deployments run both simultaneously; see the port map in
-    # docs/superpowers/plans/2026-07-27-cs-integration-hardening.md.
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8091"))
+    # Canonical distributed-service names. HOST/PORT remain accepted as a
+    # compatibility fallback for existing deployments.
+    CS_HOST: str = os.getenv("CS_HOST", os.getenv("HOST", "127.0.0.1"))
+    CS_PORT: int = int(os.getenv("CS_PORT", os.getenv("PORT", "8091")))
+    HOST: str = CS_HOST
+    PORT: int = CS_PORT
 
     # Database
     DATABASE_URL: str = os.getenv(
