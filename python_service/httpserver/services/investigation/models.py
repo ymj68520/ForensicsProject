@@ -604,6 +604,8 @@ class InvestigationGraphResponse(BaseModel):
     task_id: str
     base_graph_available: bool
     base_max_nodes: int
+    base_nodes_returned: int = 0
+    base_nodes_truncated: bool = False
     nodes: tuple[InvestigationGraphNode, ...] = ()
     links: tuple[InvestigationGraphLink, ...] = ()
     warnings: tuple[str, ...] = ()

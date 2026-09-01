@@ -335,13 +335,16 @@ Do not include any explanation, only the JSON array.)";
         }
 
         auto selected = parseImportantFiles(response.content, allFiles);
-        if (selected.empty() || selected.size() < maxFiles / 4) {
+        if (selected.empty() || (maxFiles > 0 && selected.size() < maxFiles / 4)) {
             // The model responded but returned (nearly) nothing usable —
             // its selection is unreliable, prefer the deterministic ranking.
             std::cerr << "LLM selection returned only " << selected.size()
                       << " usable paths (budget " << maxFiles
                       << ") — falling back to heuristic file selection" << std::endl;
             return selectByHeuristic(candidates, fallbackBudget);
+        }
+        if (maxFiles > 0 && selected.size() > maxFiles) {
+            selected.resize(maxFiles);
         }
         return selected;
     } catch (const std::exception& e) {

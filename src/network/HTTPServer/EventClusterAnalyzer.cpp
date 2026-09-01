@@ -268,6 +268,9 @@ Do not include any explanation, only the JSON array.)";
             return truncateToConfiguredLimit();
         }
 
+        if (maxClusters > 0 && importantClusters.size() > maxClusters) {
+            importantClusters.resize(maxClusters);
+        }
         return importantClusters;
     } catch (const std::exception& e) {
         std::cerr << "Failed to select important event clusters: " << e.what() << std::endl;

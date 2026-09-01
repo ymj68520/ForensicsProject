@@ -408,6 +408,9 @@ class CaseAnalysisPipelinesMixin:
             "selected_count":  filter_result.get("selected_count", 0),
             "dedup_removed":   filter_result.get("dedup_removed", 0),
             "source_counts":   filter_result.get("source_counts", {}),
+            "truncated":       bool(filter_result.get("truncated", False)),
+            "limit":           filter_result.get("limit", max_filter_files),
+            "limit_reason":    filter_result.get("limit_reason"),
         }
         logger.info(f"[MULTI_ANALYSIS] Case {case_id}: filter done — "
                     f"{filter_result.get('selected_count', 0)} files selected")

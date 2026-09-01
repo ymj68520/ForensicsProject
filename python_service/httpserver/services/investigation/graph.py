@@ -257,10 +257,12 @@ class InvestigationGraphService:
                 task_id, max_base_nodes
             )
             base_graph_available = True
+            base_nodes_truncated = len(base_rows) >= max_base_nodes
         except Exception:
             # G11: a Base KG failure never fails the Investigation graph and
             # never leaks backend details -- only the fixed warning token.
             base_graph_available = False
+            base_nodes_truncated = False
             warnings.append(BASE_GRAPH_UNAVAILABLE_WARNING)
 
         overlay_nodes, overlay_links = _project_overlay(overlay)
@@ -268,6 +270,8 @@ class InvestigationGraphService:
             task_id=task_id,
             base_graph_available=base_graph_available,
             base_max_nodes=max_base_nodes,
+            base_nodes_returned=len(base_rows),
+            base_nodes_truncated=base_nodes_truncated,
             nodes=tuple(overlay_nodes + _base_nodes(base_rows)),
             links=tuple(overlay_links + _base_links(base_link_rows)),
             warnings=tuple(warnings),
