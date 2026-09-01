@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
 
     // Initialize AuditLog if configured (singleton with config)
     AuditLogConfig auditConfig;
-    auditConfig.db_path = ConfigManager::instance().get("AUDIT_LOG_DB", "forensics_audit.db");
+    auditConfig.db_path = PathManager::instance().getAuditDbPath().string();
     auditConfig.cache_size = static_cast<size_t>(ConfigManager::instance().getInt("AUDIT_LOG_CACHE_SIZE", 100));
     auditConfig.enable_wal = ConfigManager::instance().getBool("AUDIT_LOG_WAL", true);
     // Get singleton instance with config

@@ -17,6 +17,7 @@
 #include "LLMIntegration/MarkitdownProxy.h"
 #include "export/TextDumpExporter.h"
 #include "export/TextDumpAdapters.h"
+#include "PathManager/PathManager.h"
 #include <iostream>
 #include <array>
 #include <filesystem>
@@ -135,15 +136,14 @@ std::string AnalysisOrchestrator::getBaseName(const std::string& path) {
 }
 
 std::string AnalysisOrchestrator::getDatabaseDir(const CommandLineArgs& args) {
-    if (args.db_dir.empty()) return "";
-    // Strip trailing slashes so prefix + name never produces a double slash
-    // (e.g. --db-dir ./out/ -> "./out" not "./out/"). Double slashes confuse
-    // some downstream HTTP path handlers (Python Path normalization).
-    std::string dir = args.db_dir;
-    while (!dir.empty() && dir.back() == '/') {
-        dir.pop_back();
+    fs::path dir;
+    if (!args.db_dir.empty()) {
+        dir = fs::weakly_canonical(fs::path(args.db_dir));
+    } else {
+        dir = PathManager::instance().getDataDir() / "cli";
     }
-    return dir + "/";
+    fs::create_directories(dir);
+    return dir.string() + "/";
 }
 
 int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
@@ -195,8 +195,8 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 
     std::string baseName = getBaseName(args.image_path);
     std::string prefix = getDatabaseDir(args);
-    if (!prefix.empty()) fs::create_directories(args.db_dir);
 
+    // All CLI products share the same configured output root.
     std::string rawDbPath = prefix + baseName + "_raw.db";
     std::string eventDbPath = prefix + baseName + "_events.db";
     std::string fileDbPath = prefix + baseName + "_files.db";
@@ -478,7 +478,6 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
 
     std::string baseName = getBaseName(args.image_path);
     std::string prefix = getDatabaseDir(args);
-    if (!prefix.empty()) fs::create_directories(args.db_dir);
 
     // Android artifacts are written into <baseName>_files.db, mirroring the
     // integrated-scene convention used by the TSK pipeline.
@@ -538,7 +537,6 @@ int AnalysisOrchestrator::runMemoryAnalysis(const CommandLineArgs& args) {
 
     std::string baseName = getBaseName(args.image_path);
     std::string prefix = getDatabaseDir(args);
-    if (!prefix.empty()) fs::create_directories(args.db_dir);
 
     std::string memDbPath = prefix + baseName + "_memory.db";
 
@@ -632,11 +630,8 @@ int AnalysisOrchestrator::runExtraction(const CommandLineArgs& args) {
 }
 
 int AnalysisOrchestrator::runFullTextSearch(const CommandLineArgs& args) {
-    std::string indexDbPath = "search_index_xapian";
-    if (!args.db_dir.empty()) {
-        fs::create_directories(args.db_dir);
-        indexDbPath = args.db_dir + "/" + indexDbPath;
-    }
+    fs::path indexRoot = fs::path(getDatabaseDir(args));
+    std::string indexDbPath = (indexRoot / "search_index_xapian").string();
 
     if (!args.index_path.empty()) {
         std::cout << "=== Indexing Directory ===" << std::endl;

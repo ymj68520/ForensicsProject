@@ -94,9 +94,27 @@ void TaskManager::start_analysis(const std::string& task_id) {
             std::string rawDbPath, eventDbPath, fileDbPath;
 
             if (!task.db_output_dir.empty()) {
-                // Legacy override: use user-specified db_output_dir
-                std::filesystem::create_directories(task.db_output_dir);
-                std::string outPrefix = task.db_output_dir + "/";
+            // Legacy db_output_dir is treated as a relative subdirectory under
+            // the configured task root; absolute paths cannot escape the data root.
+            std::filesystem::path requested(task.db_output_dir);
+            if (requested.is_absolute()) {
+                requested = requested.lexically_relative(pm.getDataDir());
+            }
+            bool escapes = requested.empty() || requested == ".";
+            for (const auto& part : requested) {
+                if (part == "..") escapes = true;
+            }
+            if (escapes) {
+                throw std::runtime_error("db_output_dir must remain under the configured data directory");
+            }
+            auto outputRoot = std::filesystem::weakly_canonical(pm.getDataDir() / requested);
+            auto dataRoot = std::filesystem::weakly_canonical(pm.getDataDir());
+            auto relative = outputRoot.lexically_relative(dataRoot);
+            if (relative.empty() || *relative.begin() == "..") {
+                throw std::runtime_error("db_output_dir escapes the configured data directory");
+            }
+            std::filesystem::create_directories(outputRoot);
+            std::string outPrefix = outputRoot.string() + "/";
                 rawDbPath = outPrefix + baseName + "_raw.db";
                 eventDbPath = outPrefix + baseName + "_events.db";
                 fileDbPath = outPrefix + baseName + "_files.db";
@@ -610,16 +628,21 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
     try {
         auto& pm = forensics::PathManager::instance();
         pm.ensureTaskDir(task_id);
-
-        // android.db follows the per-task convention used by RouteHelpers'
-        // get_database_path("android"). It is also exposed as the task's
-        // output_files_db so /tasks/<id>/results and the MIUI query routes
-        // (which fall back to output_files_db) both resolve to it.
-        std::string androidDbPath;
+        auto dataRoot = std::filesystem::weakly_canonical(pm.getDataDir());
+        std::filesystem::path androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb;
         if (!task.db_output_dir.empty()) {
-            androidDbPath = task.db_output_dir + "/" + baseName + "_android.db";
-        } else {
-            androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
+            std::filesystem::path requested(task.db_output_dir);
+            if (requested.is_absolute()) requested = requested.lexically_relative(dataRoot);
+            bool escapes = requested.empty() || requested == ".";
+            for (const auto& part : requested) if (part == "..") escapes = true;
+            if (escapes) throw std::runtime_error("db_output_dir must remain under the configured data directory");
+            auto outputRoot = std::filesystem::weakly_canonical(dataRoot / requested);
+            auto relative = outputRoot.lexically_relative(dataRoot);
+            if (relative.empty() || *relative.begin() == "..") {
+                throw std::runtime_error("db_output_dir escapes the configured data directory");
+            }
+            std::filesystem::create_directories(outputRoot);
+            androidDbPath = outputRoot / (baseName + "_android.db");
         }
 
         // dbManager is nullptr: logical sources have no _raw.db to read from.
@@ -636,7 +659,7 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             androidAnalyzer->setBackupPassword(task.backup_password);
         }
 
-        androidAnalyzer->setOutputDatabasePath(androidDbPath);
+        androidAnalyzer->setOutputDatabasePath(androidDbPath.string());
 
         if (!androidAnalyzer->initialize()) {
             add_audit_log(task_id, "ERROR", "Failed to initialize Android analyzer (logical)");
@@ -659,7 +682,7 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
                         "Android analysis completed");
         add_audit_log(task_id, "ANDROID_ANALYSIS",
                       "Logical Android analysis completed (source=" + task.android_source +
-                      ", db=" + androidDbPath + ")");
+                      ", db=" + androidDbPath.string() + ")");
         return true;
     } catch (const std::exception& e) {
         add_audit_log(task_id, "ERROR",

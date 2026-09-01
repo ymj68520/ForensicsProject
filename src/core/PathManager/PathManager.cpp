@@ -123,9 +123,10 @@ void PathManager::setDataDirName(const std::string& name) {
 }
 
 void PathManager::setProjectRoot(const std::string& root) {
-    if (!root.empty()) {
-        projectRoot_ = root;
-    }
+    if (root.empty()) return;
+    std::error_code ec;
+    auto resolved = std::filesystem::weakly_canonical(std::filesystem::path(root), ec);
+    if (!ec) projectRoot_ = resolved;
 }
 
 // --- temporary directory ---
